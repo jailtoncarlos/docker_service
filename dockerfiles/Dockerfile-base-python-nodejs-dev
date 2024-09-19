@@ -1,0 +1,55 @@
+FROM python-nodejs-base:latest AS python-nodejs-dev
+
+ARG WORK_DIR="/opt/app"
+ARG REQUIREMENTS_FILE=requirements.txt
+ARG UID="1000"
+ARG GID="1000"
+
+# Definir o usuário como root temporariamente para instalar Node.js e Yarn
+USER root
+
+# Cria o grupo customgroup e usuário customuser
+# Adicionar o usuário ao grupo sudo para conceder permissões de superusuário
+# --no-log-init: é usada para evitar a criação de arquivos de log de inicialização no diretório home do usuário recém-criado.
+RUN groupadd --gid "${GID}" customgroup && \
+    useradd --uid "${UID}" --gid "${GID}" --no-log-init --shell /bin/bash --create-home customuser && \
+    usermod -aG sudo customuser
+
+# Permitir que o usuário execute sudo sem solicitar senha (opcional)
+RUN echo "customuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Defina o usuário padrão para o container
+USER customuser
+
+# Definir o diretório de trabalho usando o argumento passado
+# diretório padrão onde o CMD será executado
+WORKDIR $WORK_DIR
+
+RUN python -m pip install --upgrade pip
+
+# Instalar o pre-commit (caso não esteja no requirements.txt)
+RUN pip install pre-commit
+
+# Adicionar os arquivos da aplicação
+COPY . $WORK_DIR
+
+# Instalar os hooks do pre-commit
+RUN if [ -f .pre-commit-config.yaml ]; then pre-commit install --install-hooks; fi
+
+# Instalar as dependências do projeto (incluindo o pre-commit se estiver listado no requirements.txt)
+
+# --mount=type=cache,target=/root/.cache/pip é uma opção avançada do Docker,
+# introduzida no BuildKit (um recurso mais recente do Docker para melhorar a
+# eficiência da construção de imagens). Ela cria um cache temporário durante
+# o processo de construção.
+# Install requirements
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r ${REQUIREMENTS_FILE}
+
+# Executar o comando de verificação dos hooks pre-commit como parte do build
+# RUN pre-commit run --all-files
+
+# docker build -f /home/jailton/workstation/docker_service/dockerfiles/Dockerfile-base-python-nodejs-dev  -t python-nodejs-dev:latest .
+
+# docker build -f /home/jailton/workstation/docker_service/dockerfiles/Dockerfile-base-python-nodejs-dev --build-arg WORK_DIR=/opt/app --build-arg REQUIREMENTS_FILE=requirements/dev.txt -t python-nodejs-dev:latest .
+
+CMD ["/bin/sh", "-c", "echo 'Starting dev container'; sleep infinity"]

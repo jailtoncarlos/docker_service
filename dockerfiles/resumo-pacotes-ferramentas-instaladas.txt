@@ -1,0 +1,139 @@
+1. locales
+- O que faz: Gera e configura definições regionais de idioma para sistemas Linux, permitindo suporte a diferentes línguas e formatação.
+- Exemplo de uso:
+  echo "pt_BR.UTF-8 UTF-8" >> /etc/locale.gen
+  locale-gen pt_BR.UTF-8
+
+2. vim
+- O que faz: Um editor de texto poderoso para sistemas Unix.
+- Exemplo de uso:
+  vim filename.txt
+
+3. openssh-server
+- O que faz: Instala um servidor SSH para permitir conexões seguras remotas ao contêiner ou servidor.
+- Exemplo de uso:
+  sudo systemctl start ssh
+
+4. git
+- O que faz: Sistema de controle de versão distribuído para rastrear mudanças no código.
+- Exemplo de uso:
+  git clone https://github.com/user/repository.git
+
+5. build-essential
+- O que faz: Conjunto de pacotes de compilação (compilador C, bibliotecas) para compilar código fonte.
+- Exemplo de uso:
+  sudo apt-get install build-essential
+
+6. nginx
+- O que faz: Servidor web e proxy reverso usado para servir sites e aplicações web.
+- Exemplo de uso:
+  sudo systemctl start nginx
+
+7. cron
+- O que faz: Gerenciador de tarefas agendadas em sistemas Unix.
+- Exemplo de uso:
+  crontab -e
+
+8. libldap2-dev, libsasl2-dev, libpq-dev
+- O que fazem: Bibliotecas de desenvolvimento para integração de LDAP, SASL (Simple Authentication and Security Layer) e PostgreSQL com linguagens como C e Python.
+- Exemplo de uso: Usadas como dependências de compilação de projetos que interagem com essas tecnologias.
+
+9. ghostscript
+- O que faz: Interpreta arquivos PostScript e PDF.
+- Exemplo de uso:
+  gs -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile=output.pdf input.ps
+
+10. libjpeg-dev, libfreetype6-dev, zlib1g-dev
+- O que fazem: Bibliotecas para manipulação de imagens (JPEG, fontes TrueType e compressão de dados).
+- Exemplo de uso: Usadas para projetos de manipulação de imagens em Python, como Pillow.
+
+11. libxmlsec1-dev, libxml2-dev, libxslt1-dev
+- O que fazem: Bibliotecas de processamento de XML e XSLT, úteis para trabalhar com XML em projetos Python ou C.
+- Exemplo de uso:
+  sudo apt-get install libxml2-dev libxslt1-dev
+
+12. libblas-dev, liblapack-dev, libatlas-base-dev, gfortran
+- O que fazem: Conjunto de bibliotecas e ferramentas para cálculo numérico e científico, amplamente usados em aplicações de aprendizado de máquina e ciência de dados.
+- Exemplo de uso: Necessárias para instalar pacotes como NumPy, SciPy.
+
+13. libglu1-mesa, libcairo2, libcairo2-dev, libcups2
+- O que fazem: Bibliotecas gráficas usadas em renderização 2D e manipulação de imagens.
+- Exemplo de uso: Usadas para renderização de gráficos e PDF.
+
+14. tmpreaper
+- O que faz: Remove arquivos temporários não utilizados.
+- Exemplo de uso:
+  tmpreaper 1d /tmp
+
+15. libgdk-pixbuf2.0-0
+- O que faz: Biblioteca para carregar e manipular imagens em formatos diferentes.
+- Exemplo de uso: Usada por várias ferramentas gráficas.
+
+16. python3-cffi
+- O que faz: Biblioteca para escrever extensões C para Python de maneira fácil.
+- Exemplo de uso:
+  pip install cffi
+
+17. libpango-1.0-0, libpangocairo-1.0-0
+- O que fazem: Bibliotecas para renderizar texto com suporte a layout de idiomas complexos.
+- Exemplo de uso: Usadas por bibliotecas gráficas como Cairo.
+
+18. ntpdate
+- O que faz: Sincroniza a hora do sistema com servidores NTP.
+- Exemplo de uso:
+  sudo ntpdate ntp.ubuntu.com
+
+19. swig
+- O que faz: Ferramenta de geração automática de bindings (vínculos) entre C/C++ e outras linguagens, como Python.
+- Exemplo de uso:
+  swig -python example.i
+
+20. openssl, libssl-dev
+- O que fazem: OpenSSL é uma biblioteca para criptografia, enquanto `libssl-dev` contém cabeçalhos e bibliotecas para desenvolvimento com OpenSSL.
+- Exemplo de uso:
+  openssl genpkey -algorithm RSA -out private_key.pem
+
+21. git-core
+- O que faz: Um pacote com ferramentas principais do Git.
+- Exemplo de uso:
+  git init
+
+22. ttf-mscorefonts-installer, libfontconfig1-dev, fontconfig
+- O que fazem: Instalam fontes TrueType da Microsoft e gerenciam fontes em sistemas Unix.
+- Exemplo de uso:
+  fc-cache -fv
+
+23. curl
+- O que faz: Ferramenta de linha de comando para transferir dados usando vários protocolos.
+- Exemplo de uso:
+  curl -O https://example.com/file.txt
+
+24. qpdf
+- O que faz: Ferramenta para criptografar e decifrar PDFs.
+- Exemplo de uso:
+  qpdf --decrypt input.pdf output.pdf
+
+25. pipenv, uv, poetry
+- pipenv: Gerenciador de dependências e ambientes virtuais Python.
+  Exemplo de uso:
+  pipenv install <package>
+
+- uv: Refere-se ao `uvloop`, um loop de eventos rápido para Python, compatível com asyncio.
+  Exemplo de uso:
+  import uvloop
+  asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
+- poetry: Ferramenta para gerenciamento de dependências e empacotamento de projetos Python.
+  Exemplo de uso:
+  poetry add <package>
+
+26. nltk
+- O que faz: Biblioteca para processamento de linguagem natural (NLP) em Python.
+- Exemplo de uso:
+  import nltk
+  nltk.download('punkt')
+
+27. wkhtmltopdf
+- O que faz: Ferramenta para converter HTML em PDFs usando o motor de renderização WebKit.
+- Exemplo de uso:
+  wkhtmltopdf input.html output.pdf

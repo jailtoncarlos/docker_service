@@ -1,0 +1,63 @@
+x-app-common:
+  &app-common
+  build:
+    context: .
+    dockerfile: ${DOCKERFILE}
+    args:
+      - DEV_IMAGE=${DEV_IMAGE}
+      - WORK_DIR=${WORK_DIR}
+      - REQUIREMENTS_FILE=${REQUIREMENTS_FILE}
+      - UID=${UID:-0}
+      - GID=${GID:-0}
+  # stdin_open: mantém o fluxo de entrada padrão (stdin) aberto para o contêiner, permitindo que
+  # o usuário envie comandos interativamente para o contêiner,
+  stdin_open: true
+  # tty:  aloca um terminal virtual (TTY) para o contêiner. Um TTY é uma interface de terminal
+  # usada para interagir com o contêiner de forma mais natural, como em um terminal
+  #de sistema operacional.
+  tty: true
+  ulimits:
+    memlock: -1
+    nofile:
+      soft: 65536
+      hard: 65536
+  environment:
+    - WORK_DIR=${WORK_DIR}
+    - UID=${UID}
+    - GID=${GID}
+  volumes:
+    - .:${WORK_DIR:-/opt/app}
+  networks:
+    - net
+
+services:
+  django:
+    env_file:
+      - .env.sample
+
+  redis:
+    env_file:
+      - .env.sample
+
+  db:
+    env_file:
+      - .env.sample
+
+  pgadmin:
+    env_file:
+      - .env.sample
+
+  node:
+    <<: *app-common
+    command: >
+      bash -c "
+        cd ${WORK_DIR}/frontend
+        npm install && npm run dev
+      "
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

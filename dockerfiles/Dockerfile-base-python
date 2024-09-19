@@ -1,0 +1,52 @@
+ARG PYTHON_BASE=python:3.12-slim-bullseye
+FROM ${PYTHON_BASE} AS python-base
+
+# Env variables
+# Desabilita o buffering de saída padrão do Python.
+# Garante que a saída do Python (como impressões no console) seja imediatamente enviada
+# para o terminal ou logs, sem ficar retida no buffer.
+# Isso é particularmente útil em ambientes de contêiner onde é importante ver os logs em tempo real.
+ENV PYTHONUNBUFFERED 1
+
+# Impede o Python de gerar arquivos .pyc, que são os bytecodes compilados do Python, em diretórios de origem.
+# Isso ajuda a manter os diretórios de código mais limpos e evita a criação de arquivos desnecessários
+# em um ambiente de contêiner, onde o armazenamento em disco pode ser mais limitado
+# e a limpeza de arquivos indesejados pode ser preferível.
+ENV PYTHONDONTWRITEBYTECODE 1
+
+ENV POETRY_HOME=/usr/local
+ENV DEBIAN_FRONTEND noninteractive
+ENV LANG pt_BR.UTF-8
+ENV LANGUAGE pt_BR:pt
+ENV LC_ALL pt_BR.UTF-8
+ENV TZ="America/Fortaleza"
+RUN export LANG=C.UTF-8
+
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
+    --mount=target=/var/cache/apt,type=cache,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+    && sed -i -e's/ main/ main contrib non-free/g' /etc/apt/sources.list \
+    && apt-get update && apt-get install -y --fix-missing locales vim openssh-server git build-essential \
+        nginx cron libldap2-dev libsasl2-dev libpq-dev ghostscript \
+        libjpeg-dev libfreetype6-dev zlib1g-dev \
+        freetds-dev libxmlsec1-dev libxml2-dev libxslt1-dev \
+        libblas-dev liblapack-dev libatlas-base-dev gfortran \
+        libglu1-mesa libcairo2 libcairo2-dev libcups2 libdbus-glib-1-2 libxinerama1 libsm6 \
+        tmpreaper libgdk-pixbuf2.0-0 libffi-dev shared-mime-info \
+        python3-cffi libpango-1.0-0 libpangocairo-1.0-0 \
+        ntpdate swig openssl libssl-dev libxrender-dev  \
+        git-core libx11-dev libxext-dev ttf-mscorefonts-installer libfontconfig1-dev fontconfig curl qpdf
+
+RUN  pip install -U pip pipenv uv && \
+  curl -sSL https://install.python-poetry.org | python -
+
+RUN echo "pt_BR.UTF-8 UTF-8" >> /etc/locale.gen
+RUN locale-gen pt_BR.UTF-8
+RUN ln -s /usr/bin/gs /usr/local/bin/gs
+RUN --mount=type=cache,target=/root/.cache/pip pip install nltk==3.8
+RUN python -c "import nltk; nltk.download('punkt', download_dir='/var/www/nltk_data'); nltk.download('stopwords', download_dir='/var/www/nltk_data'); "
+RUN rm -rf /var/lib/apt/lists/*
+ADD https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.4/wkhtmltox-0.12.4_linux-generic-amd64.tar.xz /root/wkhtmltox.tar.xz
+RUN tar -xvf /root/wkhtmltox.tar.xz -C /root && mv /root/wkhtmltox/bin/wkhtmlto* /usr/bin && fc-cache -f -v
+
+# docker build -f /home/jailton/workstation/docker_service/dockerfiles/Dockerfile-base-python  -t pyton-base:latest .

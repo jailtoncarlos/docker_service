@@ -1,0 +1,169 @@
+x-app-common:
+  &app-common
+#  image: "${DEV_IMAGE}"
+  build:
+    context: .
+    dockerfile: ${DOCKERFILE}
+    args:
+      - DEV_IMAGE=${DEV_IMAGE}
+      - BASE_IMAGE=${BASE_IMAGE}
+      - WORK_DIR=${WORK_DIR}
+      - REQUIREMENTS_FILE=${REQUIREMENTS_FILE}
+      - UID=${UID:-0}
+      - GID=${GID:-0}
+  # stdin_open: mantém o fluxo de entrada padrão (stdin) aberto para o contêiner, permitindo que
+  # o usuário envie comandos interativamente para o contêiner,
+  stdin_open: true
+  # tty:  aloca um terminal virtual (TTY) para o contêiner. Um TTY é uma interface de terminal
+  # usada para interagir com o contêiner de forma mais natural, como em um terminal
+  #de sistema operacional.
+  tty: true
+  ulimits:
+    memlock: -1
+    nofile:
+      soft: 65536
+      hard: 65536
+  environment:
+    - WORK_DIR=${WORK_DIR}
+    - UID=${UID}
+    - GID=${GID}
+  volumes:
+    - .:${WORK_DIR:-/opt/app}
+  networks:
+    - net
+
+services:
+  django:
+    <<: *app-common
+    command: >
+      bash -c "
+        pip install -r ${WORK_DIR}/$REQUIREMENTS_FILE
+        python manage.py migrate
+        python manage.py runserver 0.0.0.0:${APP_PORT:-8000}
+      "
+    ports:
+      - ${APP_PORT:-8000}:${APP_PORT:-8000}
+#    healthcheck:
+#      test: curl --fail -s http:/django:8000/accounts/login/
+#      interval: 30s
+#      timeout: 10s
+#      retries: 5
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:latest
+    ports:
+      - ${REDIS_EXTERNAL_PORT:-6379}:${REDIS_PORT:-6379}
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    networks:
+      - net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  db:
+    restart: always
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile-db
+      args:
+        - POSTGRES_IMAGE=${POSTGRES_IMAGE}
+    ports:
+      - ${DATABASE_PORT:-5432}:5432
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+      POSTGRES_DB: ${DATABASE_NAME:-${COMPOSE_PROJECT_NAME}}
+      PGDATA: /data/postgres
+#    entrypoint: ["/scripts/db_entrypoint.sh"]
+    volumes:
+      - /home/jailton/workstation/docker_service/scripts:/scripts/
+      - /home/jailton/workstation/docker_service/scripts/init_database.sh:/docker-entrypoint-initdb.d/init_database.sh
+      - ${DATABASE_DUMP_DIR:-dump}:/dump
+      - db_data:/var/lib/postgresql/data
+    cap_add:
+      - NET_ADMIN  # Adiciona a capacidade de manipulação de rede
+    shm_size: 512mb # definir o tamanho do espaço de memória compartilhada (/dev/shm). Melhorar o desempenho em operações que dependem intensivamente dessa memória
+    ulimits:        # São frequentemente usadas em contêineres que executam serviços que podem exigir muitos arquivos abertos simultaneamente,
+      memlock: -1   # "ilimitado", ou seja, não há limite para a quantidade de memória que o processo pode bloquear.
+      nofile:       # Número máximo de arquivos que podem ser abertos simultaneamente por um processo.
+        soft: 65536 # Define o limite "soft", que é o valor padrão do limite de arquivos abertos. Ele pode ser temporariamente aumentado até o valor "hard".
+        hard: 65536 # Define o limite "hard", que é o valor máximo absoluto que o limite "soft" pode alcançar.
+    networks:
+      - net
+    healthcheck:
+      test: ['CMD-SHELL', '
+        if [ "$DATABASE_HOST" = "localhost" ] || [ "$DATABASE_HOST" = "127.0.0.1" ]; then
+          pg_isready -U "${DATABASE_USER:-postgres}" -d "${DATABASE_NAME:-suap}" -h "${DATABASE_HOST:-localhost}";
+        else
+          PGPASSWORD="${DATABASE_PASSWORD}" psql -h "${DATABASE_HOST}" -p "${DATABASE_PORT:-5432}" -U "${DATABASE_USER}" -d "${DATABASE_NAME}" -c "\q";
+        fi
+      ']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@pgadmin.org"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+      PGADMIN_CONFIG_SERVER_MODE: "False"               # disables the pgadmin4 login screen.
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"  #  removes the need to enter the master password when the login screen is disabled.
+    ports:
+      - ${PGADMIN_EXTERNAL_PORT:-6379}:${PGADMIN_PORT:-6379}
+    networks:
+      - net
+    entrypoint: /bin/sh -c "chmod 600 /pgpass; /entrypoint.sh;"
+    user: root
+    depends_on:
+      db:
+        condition: service_healthy
+    configs:
+      - source: servers.json
+        target: /pgadmin4/servers.json
+      - source: pgpass
+        target: /pgpass
+
+networks:
+  net:
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: $VPN_GATEWAY_FAIXA_IP
+          gateway: $VPN_GATEWAY
+
+volumes:
+  db_data:
+
+configs:
+  pgpass:
+    content: db:${DATABASE_PORT:-5432}:*:${DATABASE_USER:-postgres}:${DATABASE_PASSWORD:-postgres}
+
+  servers.json:
+    content: |
+      {"Servers": 
+        {
+          "1": {
+            "Name": "${COMPOSE_PROJECT_NAME}@docker.localhost",
+            "Group": "Servers",          
+            "Host": "db",
+            "Port": ${DATABASE_PORT:-5432},
+            "MaintenanceDB": "postgres",
+            "Username": "${DATABASE_USER:-postgres}",
+            "PassFile": "/pgpass",
+            "ConnectionParameters": {
+                "sslmode": "prefer",
+                "connect_timeout": 10
+            }
+          }   
+        }
+      }

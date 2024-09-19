@@ -1,0 +1,11 @@
+# Adaptado de https://github.com/nikolaik/docker-python-nodejs/blob/main/Dockerfile
+
+# Segundo estágio: começa da imagem base anterior e adiciona Node.js
+FROM pyton-base:latest AS python-nodejs-base
+
+# Instalar Node.js e Yarn de forma mais simples
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    corepack enable yarn
+
+# docker build -f /home/jailton/workstation/docker_service/dockerfiles/Dockerfile-base-python-nodejs  -t python-nodejs-base:latest .

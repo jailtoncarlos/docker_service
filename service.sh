@@ -47,7 +47,6 @@ DEFAULT_BASE_DIR="$PROJECT_ROOT_DIR/$PROJECT_NAME"
 
 PROJECT_ENV_PATH_FILE="${PROJECT_DEV_DIR}/.env"
 PROJECT_ENV_FILE_SAMPLE="${PROJECT_DEV_DIR}/.env.sample"
-ENV_BASE_FILE_SAMPLE="${SCRIPT_DIR}/env.sample"
 
 ##############################################################################
 ### FUÇÕES UTILITÁRIAS
@@ -69,9 +68,8 @@ function get_server_name() {
 ### GERANDO UM ARQUIVO .env.sample personalizado.
 ##############################################################################
 function verifica_e_configura_env() {
-    local env_base_file_sample="$1"
-    local project_env_file_sample="$2"
-    local project_name="$3"
+    local project_env_file_sample="$1"
+    local project_name="$2"
 
     local project_root_dir=$(pwd -P)
     local project_dockerfile="${project_root_dir}/Dockerfile"
@@ -117,11 +115,6 @@ function verifica_e_configura_env() {
         resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
 
         if [ "$resposta" = "S" ]; then
-#            touch $project_env_file_sample
-#            echo ">>> cp ${env_base_file_sample} ${project_env_file_sample}"
-#            cp "${env_base_file_sample}" ${project_env_file_sample}
-
-
             # Definir a sub-rede e o IP do gateway inicial
             local default_vpn_gateway_faixa_ip="172.19.0.0/16"
             local default_vpn_gateway_ip="172.19.0.1"
@@ -210,7 +203,7 @@ EOF
     fi
 }
 
-verifica_e_configura_env "$ENV_BASE_FILE_SAMPLE" "$PROJECT_ENV_FILE_SAMPLE" "$PROJECT_NAME"
+verifica_e_configura_env "$PROJECT_ENV_FILE_SAMPLE" "$PROJECT_NAME"
 
 ##############################################################################
 ### EXPORTANDO VARIÁVEIS DE AMBIENTE DO ARQUIVO $PROJECT_DEV_DIR/.env

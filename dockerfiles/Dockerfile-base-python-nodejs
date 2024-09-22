@@ -1,7 +1,6 @@
-# Adaptado de https://github.com/nikolaik/docker-python-nodejs/blob/main/Dockerfile
-
-# Segundo estágio: começa da imagem base anterior e adiciona Node.js
-FROM pyton-base:latest AS python-nodejs-base
+# terceiro estágio: começa da imagem base anterior e adiciona Node.js
+ARG PYTHON_NODEJS_BASE_IMAGE=python-base:latest
+FROM ${PYTHON_NODEJS_BASE_IMAGE} AS python-nodejs-base
 
 # Instalar Node.js e Yarn de forma mais simples
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \

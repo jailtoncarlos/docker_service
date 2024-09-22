@@ -570,21 +570,26 @@ function check_command_status_on_error_exit() {
 }
 
 # Função para inserir o texto no início do arquivo .env, caso não exista
-insert_text_if_not_exists() {
-    local force=false
-    if [[ "$1" == "--force" ]]; then
-        force=true
+function insert_text_if_not_exists() {
+    local force="false"
+    if [ "$1" = "--force" ]; then
+        force="true"
         shift  # Remove o parâmetro --force da lista de argumentos
     fi
-
     local text="$1"
     local env_file="$2"
     local key=$(echo "$text" | cut -d '=' -f 1)
 
     # Verificar se a chave está definida no arquivo, se não for forçado
-    if [[ "$force" == true ]]; then
-        # Força a inserção sem verificar
-        sed -i "1i$text" "$env_file"
+    # Força a inserção sem verificação se a chave existe no arquivo $env_file
+    if [ "$force" == "true" ]; then
+        # Verifica se o texto está vazio.
+        if [ -z "$text" ]; then
+          # Adiciona uma quebra de linha
+          sed -i '1i\\' "$env_file"
+        else
+          sed -i "1i$text" "$env_file"
+        fi
         echo_warning "-- Texto '$text' adicionado ao início do arquivo $env_file (forçado)"
     elif ! grep -q "^$key=" "$env_file"; then
         # Se a chave não estiver definida, inserir no início do arquivo
@@ -657,42 +662,11 @@ function verificar_comando_inicializacao_ambiente_dev() {
 }
 
 
-
-function obter_image_root() {
-    local imagem_base="$1"
-
-    case "$imagem_base" in
-        "pyton-base:latest")
-            image_root="python:3.12-slim-bullseye"
-            ;;
-        "python:3.12-slim-bullseye")
-            image_root="python:3.12-slim-bullseye"
-            ;;
-        "python-nodejs-base:latest")
-            image_root="pyton-base:latest"
-            ;;
-        "python-nodejs-dev:latest")
-            image_root="python-nodejs-base:latest"
-            ;;
-        *)
-            image_root="python-nodejs-dev:latest"  # Nome genérico para outras imagens personalizadas
-            ;;
-    esac
-
-    # Retorna o nome base correspondente
-    echo "$image_root"
-}
-
 # Função para exibir as opções de imagens e retornar a escolha do usuário
 function escolher_imagem_base() {
     echo >&2 "Selecione uma das opções de imagem base para seu projeto:"
-    echo >&2 "1. Imagem base Python (pyton-base:latest)"
-    echo >&2 "2. Imagem base Python com Node.js (python-nodejs-base:latest)"
-    echo >&2 "3. Imagem de desenvolvimento Python com Node.js (python-nodejs-dev:latest).
-    - Cria grupo customgroup e usuário customuser com o GID e UID do seu usuário do sistema operacional;
-    - Inclui o código fonte do projeto no container;
-    - Instala as dependências definidas definidas no arquivo requiriments.
-    "
+    echo >&2 "1. Imagem base de desenvolvimento Python"
+    echo >&2 "2. Imagem base de desenvolvimento Python com Node.js."
 
     # Solicitar entrada do usuário
     read -p "Digite o número correspondente à sua escolha: " escolha
@@ -700,13 +674,10 @@ function escolher_imagem_base() {
     # Definir a imagem base com base na escolha
     case $escolha in
         1)
-            imagem_base="pyton-base:latest"
+            imagem_base="python_base_dev"
             ;;
         2)
-            imagem_base="python-nodejs-base:latest"
-            ;;
-        3)
-            imagem_base="python-nodejs-dev:latest"
+            imagem_base="python_nodejs_dev"
             ;;
         *)
             echo_warning >&2 "Escolha inválida. Por favor, escolha uma opção válida."
@@ -725,4 +696,98 @@ function escolher_imagem_base() {
 #
 #echo "Imagem selecionada: $imagem_base"
 #echo "Nome base: $nome_base"
+}
+
+create_pre_push_hook() {
+  local compose_command="$1"
+  local service_name="$2"
+  local workdir="$3"
+  local gitbranch_name="$4"
+
+  # Verifica se o arquivo pre-push já existe
+  if [ ! -f .git/hooks/pre-push ]; then
+    # Cria o arquivo pre-push com o conteúdo necessário
+    cat <<EOF > .git/hooks/pre-push
+#!/bin/sh
+
+# Execute o comando pre-commit customizado
+# - "git config --global --add safe.directory" permite que o diretório especificado seja marcado como seguro, permitindo que o Git execute operações nesse diretório.
+# - "--from-ref origin/\${GIT_BRANCH_MAIN:-master}" especifica o commit de origem para a comparação.
+#  Por padrão, o commit de origem será a referência da branch principal
+# - "--to-ref HEAD" define que o commit final para comparação é o HEAD, ou seja, o commit mais recente na branch atual.
+# - "pre-commit run" executa os hooks de pre-commit definidos no arquivo .pre-commit-config.yaml
+$compose_command exec -T $service_name bash -c "git config --global --add safe.directory ${workdir:-/opt/suap} && pre-commit run --from-ref origin/${gitbranch_name:-master} --to-ref HEAD"
+
+# Verifica se o script foi executado com sucesso
+if [ \$? -ne 0 ]; then
+  echo "Falha no pre-commit, push abortado."
+  exit 1
+fi
+EOF
+
+    # Torna o arquivo pre-push executável
+    chmod +x .git/hooks/pre-push
+    echo "Arquivo pre-push criado com sucesso."
+  else
+    echo "Arquivo pre-push já existe."
+  fi
+}
+
+
+imprime_variaveis_env() {
+  local env_file_path="$1"
+
+  while IFS= read -r line; do
+    # Ignora linhas em branco ou comentários
+    if [[ -n "$line" && "$line" != \#* ]]; then
+      # Extrai o nome da variável e o valor, com base no formato "chave=valor"
+      var_name=$(echo "$line" | cut -d'=' -f1)
+      var_value=$(echo "$line" | cut -d'=' -f2-)
+
+      # Verifica se o nome da variável é válido
+      if [[ "$var_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+          echo "$var_name=$var_value"
+      else
+        # Se o nome da variável for inválido, apenas exibe a linha lida
+         echo "$var_name"
+      fi
+    fi
+  done <"$env_file_path"
+
+# ver apenas as variáveis definidas no próprio script,
+#set
+
+# ver todas as variáveis, incluindo as variáveis locais e as de ambiente no script,
+#declare -p
+  # declare -x:
+  #Função: Exporta a variável, tornando-a disponível para processos filhos.
+  #Exemplo: declare -x VAR="value" faz com que VAR seja visível para qualquer processo que o script iniciar.
+  #
+  #declare -i:
+  #Função: Faz com que a variável seja tratada como um inteiro (número).
+  #Exemplo: declare -i NUM=10 significa que NUM só aceitará valores inteiros. Se você tentar atribuir um valor não numérico, ele será interpretado como zero.
+  #
+  #declare --:
+  #Função: Usado para marcar o fim das opções, útil quando uma variável pode começar com um -. Isso impede que o Bash interprete o valor da variável como uma opção de comando.
+  #Exemplo: declare -- VAR="value" assegura que "VAR" não será tratado como uma opção.
+  #
+  #declare -r:
+  #Função: Torna a variável somente leitura. Não pode ser alterada após sua atribuição.
+  #Exemplo: declare -r VAR="value" significa que você não pode modificar VAR posteriormente.
+  #
+  #declare -ir:
+  #Função: Combina as opções -i e -r, tornando a variável um número inteiro e somente leitura.
+  #Exemplo: declare -ir NUM=100 significa que NUM é um inteiro e não pode ser modificado.
+  #
+  #declare -a:
+  #Função: Define a variável como um array indexado numericamente.
+  #Exemplo: declare -a ARRAY define ARRAY como um array, permitindo atribuir e acessar valores como ARRAY[0], ARRAY[1], etc.
+  #
+  #declare -A:
+  #Função: Define a variável como um array associativo (ou hash), onde as chaves podem ser strings.
+  #Exemplo: declare -A HASH permite que você use chaves do tipo string, como HASH["key"]="value".
+  #
+  #declare -ar:
+  #Função: Define a variável como um array somente leitura.
+  #Exemplo: declare -ar ARRAY significa que o array ARRAY não pode ser alterado após sua criação.
 }

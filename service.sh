@@ -10,92 +10,44 @@
 
 # garantir que o Git não altere os fins de linha automaticamente ao fazer checkout ou commit.
 git config --global core.autocrlf false
-
-RED_COLOR='\033[0;31m'     # Cor vermelha para erros
-NO_COLOR='\033[0m'         # Cor neutra para resetar as cores no terminal
-
-function echo_error() {
-  echo "${@:3}" -e "$RED_COLOR DANG: $1$NO_COLOR"
-}
-
-configure_path_and_alias() {
-    # Obter o diretório do script
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-    # Detectar o shell em uso
-    SHELL_USUARIO=$(basename "$SHELL")
-
-    # Escolher o arquivo de configuração com base no shell
-    ARQUIVO_CONF=""
-    if [[ "$SHELL_USUARIO" == "bash" ]]; then
-        ARQUIVO_CONF="$HOME/.bashrc"
-    elif [[ "$SHELL_USUARIO" == "zsh" ]]; then
-        ARQUIVO_CONF="$HOME/.zshrc"
-    else
-        echo_error "Shell não suportado. Apenas bash e zsh são suportados."
-        exit 1
-    fi
-
-    # Verificar se o diretório já está no PATH
-    if ! grep -Fxq "export PATH=\"\$PATH:$SCRIPT_DIR\"" "$ARQUIVO_CONF"; then
-        # Se não estiver, adicionar o diretório ao arquivo de configuração
-        echo "export PATH=\"\$PATH:$SCRIPT_DIR\"" >> "$ARQUIVO_CONF"
-        echo "O diretório $SCRIPT_DIR foi adicionado ao PATH no arquivo $ARQUIVO_CONF."
-
-        # Recarregar o arquivo de configuração
-        source "$ARQUIVO_CONF"
-#    else
-#      echo "O diretório $SCRIPT_DIR já está no PATH."
-    fi
-
-    # Verifica se o alias já está configurado
-    if ! grep -q "alias sdocker=" "$ARQUIVO_CONF"; then
-        echo "Criando alias para sdocker"
-        echo "alias sdocker=\"/home/jailton/workstation/docker_service/service.sh\"" >> "$ARQUIVO_CONF"
-        source "$ARQUIVO_CONF"
-        echo "Alias \"sdocker\" criado com sucesso. Reinicie o terminal ou use \"source $ARQUIVO_CONF\" para ativar."
-#    else
-#        echo "Alias 'sdocker' já está configurado."
-    fi
-}
-
-configure_path_and_alias
+PROJECT_ROOT_DIR=$(pwd -P)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-utils_sh="$SCRIPT_DIR/scripts/utils.sh"
-source $utils_sh
+# Carrega o arquivo externo com as funções
+source "$SCRIPT_DIR/install.sh"
 
+check_and_load_utils
 
-if [ ! -f "$utils_sh" ]; then
-  echo_error "Shell script $utils_sh não existe.
-  Esse arquivo possui as funções utilitárias necessárias.
-  Impossível continuar!"
-  exit 1
+# Carrega o arquivo externo com as funções
+source "$SCRIPT_DIR/scripts/read_ini.sh"
+
+if ! verifica_instalacao; then
+    echo_warning "Utilitário docker service não instalado!
+    Execute o comando ./install.sh"
 fi
 
-ROOT_DIR=$(pwd -P)
-if [ "$ROOT_DIR" = "$SCRIPT_DIR" ]; then
+if [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ]; then
   echo_success "Configurações iniciais do spript definidas com sucesso."
   echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto."
   exit 1
 else
-  echo_info "ROOT_DIR: $ROOT_DIR"
-  if ! verificar_comando_inicializacao_ambiente_dev "$ROOT_DIR"; then
+  echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
+  if ! verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR"; then
       echo_error "Ambiente de desenvolvimento não identificado."
       echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto."
       exit 1
   fi
 fi
 
-DOCKER_DEV_DIR=$ROOT_DIR
+PROJECT_DEV_DIR=$PROJECT_ROOT_DIR
 
-PROJECT_NAME=$(basename $ROOT_DIR)
-DEFAULT_BASE_DIR="$ROOT_DIR/$PROJECT_NAME"
+PROJECT_NAME=$(basename $PROJECT_ROOT_DIR)
+DEFAULT_BASE_DIR="$PROJECT_ROOT_DIR/$PROJECT_NAME"
 
-_CURRENT_FILE_NAME=$(basename $0)
-CURRENT_FILE_NAME="${_CURRENT_FILE_NAME%.*}"
-CURRENT_FILE_NAME_PATH="$ROOT_DIR/$CURRENT_FILE_NAME.sh"
+PROJECT_ENV_PATH_FILE="${PROJECT_DEV_DIR}/.env"
+PROJECT_ENV_FILE_SAMPLE="${PROJECT_DEV_DIR}/.env.sample"
+ENV_BASE_FILE_SAMPLE="${SCRIPT_DIR}/env.sample"
 
 ##############################################################################
 ### FUÇÕES UTILITÁRIAS
@@ -116,176 +68,176 @@ function get_server_name() {
 ##############################################################################
 ### GERANDO UM ARQUIVO .env.sample personalizado.
 ##############################################################################
-# Função para verificar e retornar o caminho correto do arquivo de requirements
-function get_requirements_file() {
-    local root_dir="$1"
+function verifica_e_configura_env() {
+    local env_base_file_sample="$1"
+    local project_env_file_sample="$2"
+    local project_name="$3"
 
-    # Verificar se o arquivo requirements.txt existe
-    if [[ -f "$root_dir/requirements.txt" ]]; then
-        echo "requirements.txt"
-        return
+    local project_root_dir=$(pwd -P)
+    local project_dockerfile="${project_root_dir}/Dockerfile"
+    local default_base_dir="$project_root_dir/$project_name"
+    local settings_sample_local_file="local_settings_sample.py"
+    # A estrutura ${VAR/old/new} substitui a primeira ocorrência de old na variável VAR por new
+    # Removendo a plavra "_sample". Ex. local_settings_sample.py irá ficar local_settings.py
+    local settings_local_file="${settings_sample_local_file/_sample/}"
+
+    # Função para verificar e retornar o caminho correto do arquivo de requirements
+    function get_requirements_file() {
+        # Verificar se o arquivo requirements.txt existe
+        if [[ -f "$project_root_dir/requirements.txt" ]]; then
+            echo "requirements.txt"
+            return
+        fi
+
+        # Verificar se o arquivo requirements/dev.txt existe
+        if [[ -f "$project_root_dir/requirements/dev.txt" ]]; then
+            echo "requirements/dev.txt"
+            return
+        fi
+
+        # Verificar se o arquivo requirements/development.txt existe
+        if [[ -f "$project_root_dir/requirements/development.txt" ]]; then
+            echo "requirements/development.txt"
+            return
+        fi
+
+        # Caso nenhum arquivo seja encontrado, retornar uma string vazia
+        echo ""
+    }
+
+    # Definir variáveis de ambiente
+    local default_requirements_file=$(get_requirements_file "$project_root_dir")
+
+    # Verificar se o arquivo de exemplo de ambiente existe
+    if [ ! -f "${project_env_file_sample}" ]; then
+        echo_error "Arquivo ${project_env_file_sample} não encontrado. Impossível continuar!"
+        echo_warning "Esse arquivo é o modelo com as configurações mínimas necessárias para os containers funcionarem."
+        echo_info "Deseja que este script crie um arquivo modelo padrão para seu projeto?"
+        read -p "Pressione 'S' para continuar: " resposta
+        resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+
+        if [ "$resposta" = "S" ]; then
+#            touch $project_env_file_sample
+#            echo ">>> cp ${env_base_file_sample} ${project_env_file_sample}"
+#            cp "${env_base_file_sample}" ${project_env_file_sample}
+
+
+            # Definir a sub-rede e o IP do gateway inicial
+            local default_vpn_gateway_faixa_ip="172.19.0.0/16"
+            local default_vpn_gateway_ip="172.19.0.1"
+
+            # Verificar se o gateway inicial está em uso
+            if verificar_gateway_em_uso "$default_vpn_gateway_ip"; then
+                echo_warning "IP do gateway $default_vpn_gateway_ip já está em uso."
+
+                # Encontrar um novo IP de gateway disponível
+                local resultado=$(encontrar_ip_disponivel "172.19" "16")
+
+                if [ $? -eq 0 ]; then
+                    default_vpn_gateway_faixa_ip=$(echo "$resultado" | cut -d ' ' -f 1)
+                    default_vpn_gateway_ip=$(echo "$resultado" | cut -d ' ' -f 2)
+                    echo_warning "Nova sub-rede e IP de gateway disponíveis: $default_vpn_gateway_faixa_ip, Gateway: $default_vpn_gateway_ip"
+                else
+                    echo_error "Não foi possível encontrar uma sub-rede ou IP de gateway disponível."
+                    exit 1
+                fi
+            else
+                echo_warning "Sub-rede default_vpn_gateway_faixa_ip e gateway $default_vpn_gateway_ip estão disponíveis."
+            fi
+
+# Criar o arquivo .env.sample e inserir as variáveis na ordem inversa
+cat <<EOF > "$project_env_file_sample"
+COMPOSE_PROJECT_NAME=${project_name}
+DEV_IMAGE=
+GIT_BRANCH_MAIN=master
+REQUIREMENTS_FILE=${default_requirements_file}
+
+SETTINGS_SAMPLE_LOCAL_FILE=${settings_sample_local_file}
+SETTINGS_LOCAL_FILE=${settings_local_file}
+BASE_DIR=${default_base_dir}
+
+DATABASE_NAME=${project_name}
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres
+DATABASE_HOST=db
+DATABASE_PORT=5432
+DATABASE_DUMP_DIR=${project_root_dir}/dump
+
+WORK_DIR=/opt/app
+
+DOCKERFILE=${project_dockerfile}
+PYTHON_BASE_IMAGE=python:3.12-slim-bullseye
+POSTGRES_IMAGE=postgres:16.3
+
+APP_PORT=8000
+REDIS_EXTERNAL_PORT=6379
+PGADMIN_EXTERNAL_PORT=8001
+
+USER_NAME=$(id -un)
+UID=$(id -g)
+GID=$(id -u)
+
+VPN_GATEWAY=${default_vpn_gateway_ip}
+VPN_GATEWAY_FAIXA_IP=${default_vpn_gateway_faixa_ip}
+
+SERVICES_DEPENDENCIES="
+web:node;redis;db
+db:pgadmin
+"
+
+SERVICES_COMMANDS="
+all:deploy;undeploy;redeploy;status;restart;logs;up;down;
+web:makemigrations;manage;migrate;shell_plus;debug;build;git;pre-commit
+db:psql;wait;dump;restore;copy;
+pgadmin:;
+redis:
+"
+
+COMPOSES_FILES="
+all:docker-compose.yml
+"
+EOF
+
+            echo_success "Arquivo $project_env_file_sample criado."
+        fi
     fi
 
-    # Verificar se o arquivo requirements/dev.txt existe
-    if [[ -f "$root_dir/requirements/dev.txt" ]]; then
-        echo "requirements/dev.txt"
-        return
+    # Verificar novamente se o arquivo de ambiente foi criado
+    if [ ! -f "${project_env_file_sample}" ]; then
+        echo_error "Arquivo ${project_env_file_sample} não encontrado. Impossível continuar!"
+        echo_warning "Adicione o arquivo $project_env_file_sample no diretório raiz ($project_root_dir) do seu projeto."
+        exit 1
     fi
-
-    # Verificar se o arquivo requirements/development.txt existe
-    if [[ -f "$root_dir/requirements/development.txt" ]]; then
-        echo "requirements/development.txt"
-        return
-    fi
-
-    # Caso nenhum arquivo seja encontrado, retornar uma string vazia
-    echo ""
 }
 
-DEFAULT_REQUIREMENTS_FILE=$(get_requirements_file "$ROOT_DIR")
-ENV_PATH_FILE_SAMPLE="${DOCKER_DEV_DIR}/.env.sample"
-ENV_BASE_FILE_SAMPLE="${SCRIPT_DIR}/env.sample"
+verifica_e_configura_env "$ENV_BASE_FILE_SAMPLE" "$PROJECT_ENV_FILE_SAMPLE" "$PROJECT_NAME"
 
-if [ ! -f "${ENV_PATH_FILE_SAMPLE}" ]; then
-  echo_error "Arquivo ${ENV_PATH_FILE_SAMPLE} não encontrado. Impossível continuar!"
-  echo_warning "Esse arquivo é o modelo com as configurações mínimas necessárias para os container funcionarem."
-  echo_info "Deseja que este script crie um arquivo modelo padrão para seu projeto?"
-  read -p "Pressione 'S' para continuar: " resposta
-  resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+##############################################################################
+### EXPORTANDO VARIÁVEIS DE AMBIENTE DO ARQUIVO $PROJECT_DEV_DIR/.env
+##############################################################################
+configura_env() {
+  local project_env_path_file="$1"
+  local project_env_file_sample="$2"
 
-  if [ "$resposta" = "S" ]; then
-      echo ">>> cp ${ENV_BASE_FILE_SAMPLE} ${ENV_PATH_FILE_SAMPLE}"
-      cp "${ENV_BASE_FILE_SAMPLE}" ${ENV_PATH_FILE_SAMPLE}
-
-      sleep 0.5
-
-      # Definir a sub-rede e o IP do gateway inicial
-      DEFAULT_VPN_GATEWAY_FAIXA_IP="172.18.0.0/16"
-      DEFAULT_VPN_GATEWAY_IP="172.18.0.1"
-
-      # Verificar se o gateway inicial está em uso
-      if verificar_gateway_em_uso "$DEFAULT_VPN_GATEWAY_IP"; then
-          echo_warning "IP do gateway $DEFAULT_VPN_GATEWAY_IP já está em uso."
-
-          # Encontrar um novo IP de gateway disponível
-          resultado=$(encontrar_ip_disponivel "172.19" "16")
-
-          if [ $? -eq 0 ]; then
-              DEFAULT_VPN_GATEWAY_FAIXA_IP=$(echo "$resultado" | cut -d ' ' -f 1)
-              DEFAULT_VPN_GATEWAY_IP=$(echo "$resultado" | cut -d ' ' -f 2)
-              echo_warning "Nova sub-rede e IP de gateway disponíveis: $DEFAULT_VPN_GATEWAY_FAIXA_IP, Gateway: $DEFAULT_VPN_GATEWAY_IP"
-          else
-              echo_error "Não foi possível encontrar uma sub-rede ou IP de gateway disponível."
-              exit 1
-          fi
-      else
-          echo_warning "Sub-rede DEFAULT_VPN_GATEWAY_FAIXA_IP e gateway $DEFAULT_VPN_GATEWAY_IP estão disponíveis."
-      fi
-
-
-      insert_text_if_not_exists "DATABASE_DUMP_DIR=${ROOT_DIR}/dump" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "DATABASE_NAME=${PROJECT_NAME}" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "VPN_GATEWAY_FAIXA_IP=${DEFAULT_VPN_GATEWAY_FAIXA_IP}" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "VPN_GATEWAY=${DEFAULT_VPN_GATEWAY_IP}" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "GID=$(id -u)" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "UID=$(id -g)" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "PGADMIN_EXTERNAL_PORT=8001" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "REDIS_EXTERNAL_PORT=6379" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "APP_PORT=8000" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "REQUIREMENTS_FILE=${DEFAULT_REQUIREMENTS_FILE}" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "DOCKERFILE=Dockerfile" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "POSTGRES_IMAGE=postgres:16.3" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "WORK_DIR=/opt/app" "$ENV_PATH_FILE_SAMPLE"
-      insert_text_if_not_exists "COMPOSE_PROJECT_NAME=${PROJECT_NAME}" "$ENV_PATH_FILE_SAMPLE"
-      echo_success "Arquivo $ENV_PATH_FILE_SAMPLE criado."
+  # Verifica se o arquivo .env não existe e procede com a cópia
+  if [ ! -f "${project_env_path_file}" ]; then
+    echo ">>> cp ${project_env_file_sample}  ${project_env_path_file}"
+    cp "${project_env_file_sample}" "${project_env_path_file}"
   fi
-fi
 
-if [ ! -f "${ENV_PATH_FILE_SAMPLE}" ]; then
-  echo_error "Arquivo ${ENV_PATH_FILE_SAMPLE} não encontrado. Impossível continuar!"
-  echo_warning "Adicione o arquivo $ENV_PATH_FILE_SAMPLE no diretório raiz ($ROOT_DIR) do seu projeto."
-  exit 1
-fi
-##############################################################################
-### EXPORTANDO VARIÁVEIS DE AMBIENTE DO ARQUIVO $DOCKER_DEV_DIR/.env
-##############################################################################
-ENV_PATH_FILE="${DOCKER_DEV_DIR}/.env"
+  sleep .5
 
-# Verifica se o arquivo ${ENV_PATH_FILE} NÃO EXISTE. Se sim, procede com a cópia
-if [ ! -f "${ENV_PATH_FILE}" ]; then
-  echo ">>> cp ${ENV_PATH_FILE_SAMPLE}  ${ENV_PATH_FILE}"
-  cp "${ENV_PATH_FILE_SAMPLE}" ${ENV_PATH_FILE}
-fi
+  # Exporta as variáveis de ambiente presentes no arquivo .env
+  export $(xargs -0 < "${project_env_path_file}") 2> /dev/null
 
-sleep .5
+  # Carrega o conteúdo do arquivo .env diretamente no script
+  source "${project_env_path_file}" 2>/dev/null
 
-# exportar as variáveis de ambiente presentes no arquivo .env, o que permite que o bash
-# reconheça as variáveis no ambiente de execução.
-# O conteúdo multilinha (como a variável SERVICES_DEPENDENCIES) pode não ser corretamente
-# interpretado devido ao formato de leitura do xargs.
-export $(xargs -0 < ${ENV_PATH_FILE}) 2> /dev/null
-# Carrega o conteúdo do arquivo .env diretamente no script, permitindo que variáveis com múltiplas linhas,
-# como SERVICES_DEPENDENCIES, sejam interpretadas corretamente, preservando a formatação.
-source ${ENV_PATH_FILE} 2>/dev/null
-
-imprime_variaveis_env() {
-  while IFS= read -r line; do
-    # Ignora linhas em branco ou comentários
-    if [[ -n "$line" && "$line" != \#* ]]; then
-      # Extrai o nome da variável e o valor, com base no formato "chave=valor"
-      var_name=$(echo "$line" | cut -d'=' -f1)
-      var_value=$(echo "$line" | cut -d'=' -f2-)
-
-      # Verifica se o nome da variável é válido
-      # operador =~ é utilizado no Bash para realizar uma comparação com expressão regular.
-      if [[ "$var_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-          echo "$var_name=$var_value"
-#        fi
-      else
-        # Se o nome da variável for inválido, apenas exibe a linha lida
-         echo "$var_name"
-      fi
-    fi
-  done <"${ENV_PATH_FILE}"
+  # Imprime as variáveis de ambiente
+#  imprime_variaveis_env "${project_env_path_file}"
 }
-#imprime_variaveis_env
-# ver apenas as variáveis definidas no próprio script,
-#set
 
-
-# ver todas as variáveis, incluindo as variáveis locais e as de ambiente no script,
-#declare -p
-  # declare -x:
-  #Função: Exporta a variável, tornando-a disponível para processos filhos.
-  #Exemplo: declare -x VAR="value" faz com que VAR seja visível para qualquer processo que o script iniciar.
-  #
-  #declare -i:
-  #Função: Faz com que a variável seja tratada como um inteiro (número).
-  #Exemplo: declare -i NUM=10 significa que NUM só aceitará valores inteiros. Se você tentar atribuir um valor não numérico, ele será interpretado como zero.
-  #
-  #declare --:
-  #Função: Usado para marcar o fim das opções, útil quando uma variável pode começar com um -. Isso impede que o Bash interprete o valor da variável como uma opção de comando.
-  #Exemplo: declare -- VAR="value" assegura que "VAR" não será tratado como uma opção.
-  #
-  #declare -r:
-  #Função: Torna a variável somente leitura. Não pode ser alterada após sua atribuição.
-  #Exemplo: declare -r VAR="value" significa que você não pode modificar VAR posteriormente.
-  #
-  #declare -ir:
-  #Função: Combina as opções -i e -r, tornando a variável um número inteiro e somente leitura.
-  #Exemplo: declare -ir NUM=100 significa que NUM é um inteiro e não pode ser modificado.
-  #
-  #declare -a:
-  #Função: Define a variável como um array indexado numericamente.
-  #Exemplo: declare -a ARRAY define ARRAY como um array, permitindo atribuir e acessar valores como ARRAY[0], ARRAY[1], etc.
-  #
-  #declare -A:
-  #Função: Define a variável como um array associativo (ou hash), onde as chaves podem ser strings.
-  #Exemplo: declare -A HASH permite que você use chaves do tipo string, como HASH["key"]="value".
-  #
-  #declare -ar:
-  #Função: Define a variável como um array somente leitura.
-  #Exemplo: declare -ar ARRAY significa que o array ARRAY não pode ser alterado após sua criação.
+configura_env "$PROJECT_ENV_PATH_FILE" "$PROJECT_ENV_FILE_SAMPLE"
 
 ##############################################################################
 ### CONVERTENDO ARRAY DO .ENV NA TAD DICT
@@ -322,217 +274,261 @@ convert_multiline_to_array "$ARG_SERVICE_PARSE" DICT_ARG_SERVICE_PARSE
 ##############################################################################
 ### DEFINIÇÕES DE VARIÁVEIS GLOBAIS
 ##############################################################################
-REVISADO=""${REVISADO:-0}
-
-USER_UID=${UID:-$(id -u)}
-USER_GID=${GID:-$(id -g)}
+REVISADO=${REVISADO:-0}
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$PROJECT_NAME}"
-WORK_DIR="${WORK_DIR:-/opt/app}"
-
-VPN_GATEWAY_FAIXA_IP="${VPN_GATEWAY_FAIXA_IP:-172.18.0.0/16}"
-VPN_GATEWAY="${VPN_GATEWAY:-172.18.0.2}"
-
-APP_PORT=${APP_PORT:-8000}
-PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT:-8001}
-REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT:-6379}
-
-COMMANDS_COMUNS=(up down restart exec run logs shell)
-
-POSTGRES_DB=${DATABASE_NAME:-$POSTGRES_DB}
-POSTGRES_USER=${DATABASE_USER:-$POSTGRES_USER}
-POSTGRES_PASSWORD=${DATABASE_PASSWORD:-$POSTGRES_PASSWORD}
-POSTGRES_HOST=${DATABASE_HOST:-$POSTGRES_HOST}
-POSTGRES_PORT=${DATABASE_PORT:-$POSTGRES_PORT}
-
-POSTGRESQL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/"
-#echo "$POSTGRESQL"
-
-POSTGRES_DUMP_DIR=${DATABASE_DUMP_DIR:-dump}
-DIR_DUMP=${POSTGRES_DUMP_DIR:-dump}
-
-ARG_SERVICE="$1"
-ARG_COMMAND="$2"
-ARG_OPTIONS="${@:3}"
-SERVICE_NAME=$(get_server_name "${ARG_SERVICE}")
-SERVICE_WEB_NAME=$(get_server_name "web")
-SERVICE_DB_NAME=$(get_server_name "db")
+GIT_BRANCH_MAIN=${GIT_BRANCH_MAIN:-master}
+REQUIREMENTS_FILE="${REQUIREMENTS_FILE:-requirements.txt}"
 
 BASE_DIR=${BASE_DIR:-$DEFAULT_BASE_DIR}
-
 SETTINGS_SAMPLE_LOCAL_FILE="${SETTINGS_SAMPLE_LOCAL_FILE:-local_settings_sample.py}"
-
 # A estrutura ${VAR/old/new} substitui a primeira ocorrência de old na variável VAR por new
 # Removendo a plavra "_sample". Ex. local_settings_sample.py irá ficar  local_settings.py
 SETTINGS_LOCAL_FILE=${SETTINGS_SAMPLE_LOCAL_FILE/_sample/}
 
-REQUIREMENTS_FILE="${REQUIREMENTS_FILE:-requirements.txt}"
+DATABASE_NAME=${DATABASE_NAME:-$COMPOSE_PROJECT_NAME}
+POSTGRES_USER=${DATABASE_USER:-$POSTGRES_USER}
+POSTGRES_PASSWORD=${DATABASE_PASSWORD:-$POSTGRES_PASSWORD}
+POSTGRES_DB=${DATABASE_NAME:-$POSTGRES_DB}
+POSTGRES_HOST=${DATABASE_HOST:-$POSTGRES_HOST}
+POSTGRES_PORT=${DATABASE_PORT:-$POSTGRES_PORT}
+#POSTGRESQL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/"
+POSTGRES_DUMP_DIR=${DATABASE_DUMP_DIR:-dump}
+DIR_DUMP=${POSTGRES_DUMP_DIR:-dump}
+
+WORK_DIR="${WORK_DIR:-/opt/app}"
+
+PROJECT_DOCKERFILE="${PROJECT_DOCKERFILE:-Dockerfile}"
+PYTHON_BASE_IMAGE="${PYTHON_BASE_IMAGE:-3.12-slim-bullseye}"
+#DEV_IMAGE="${DEV_IMAGE:-python-nodejs-base}"
+POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16.3}"
+
+APP_PORT=${APP_PORT:-8000}
+REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT:-6379}
+PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT:-8001}
+
+USER_NAME=${USER_NAME:-$(id -un)}
+USER_UID=${UID:-$(id -u)}
+USER_GID=${GID:-$(id -g)}
+
+VPN_GATEWAY_FAIXA_IP="${VPN_GATEWAY_FAIXA_IP:-172.19.0.0/16}"
+VPN_GATEWAY="${VPN_GATEWAY:-172.19.0.2}"
+
+COMMANDS_COMUNS=(up down restart exec run logs shell)
+
+ARG_SERVICE="$1"
+ARG_COMMAND="$2"
+ARG_OPTIONS="${@:3}"
+#SERVICE_NAME=$(get_server_name "${ARG_SERVICE}")
+SERVICE_WEB_NAME=$(get_server_name "web")
+SERVICE_DB_NAME=$(get_server_name "db")
 
 ##############################################################################
 ### Tratamento para arquivo Dockerfile
 ##############################################################################
-DOCKERFILE_BASE_DEV_SAMPLE="${SCRIPT_DIR}/dockerfiles/Dockerfile-base-python-nodejs-dev"
-DOCKERFILE_SAMPLE="${ROOT_DIR}/Dockerfile.sample"
-DOCKERFILE="${ROOT_DIR}/Dockerfile"
+function verifica_e_configura_dockerfile_project() {
+    local script_dir="$1"
+    local project_root_dir="$2"
+    local project_env_path_file="$3"
+    local compose_project_name="$4"
+    local revisado="$5"
+    local dev_image="$6"
 
-if { [[ $REVISADO -eq 0 ]] && [[ ! -f "$DOCKERFILE_SAMPLE" ]]; } || [[ ! -f "$DOCKERFILE" ]]; then
-  echo_warning "Arquivo $DOCKERFILE_SAMPLE não encontrado."
-  echo_info "Esse arquivo é um modelo de um Dockerfile com o mínimo de instruções para
-  criar uma imagem de desenvolvimento baseado na arquiterua \"Docker Service\"."
-  echo_info "Deseja que este script crie um arquivo modelo padrão para seu projeto?"
-  read -p "Pressione 'S' para continuar: " resposta
-  resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+    local config_inifile="${script_dir}/config.ini"
+    local dockerfile_base_dev_sample="${script_dir}/dockerfiles/Dockerfile-base-python-nodejs-dev"
+    local project_dockerfile_sample="${project_root_dir}/Dockerfile.sample"
+    local project_dockerfile="${project_root_dir}/Dockerfile"
+    local resposta
+    local base_image
 
-  if [ "$resposta" = "S" ]; then
-      echo ">>> cp ${DOCKERFILE_BASE_DEV_SAMPLE} ${DOCKERFILE_SAMPLE}"
-      cp "${DOCKERFILE_BASE_DEV_SAMPLE}" ${DOCKERFILE_SAMPLE}
-      echo_success "Arquivo $DOCKERFILE_SAMPLE criado!"
-      sleep 0.5
-  fi
-fi
-
-if [ -f "$DOCKERFILE_SAMPLE" ] && ! grep -q "${COMPOSE_PROJECT_NAME}-dev-user" "$DOCKERFILE_SAMPLE"; then
-    echo "--- Substituindo \"app-dev-user\" por \"${COMPOSE_PROJECT_NAME}-dev-user\" no arquivo \"${DOCKERFILE_SAMPLE}\""
-    echo ">>> sed -i \"s/app-dev-user/${COMPOSE_PROJECT_NAME}-dev-user/g\" $DOCKERFILE_SAMPLE"
-    sed -i "s|app-dev-user|${COMPOSE_PROJECT_NAME}-dev-user|g" "$DOCKERFILE_SAMPLE"
-fi
-
-# Verificar se a variável DEV_IMAGE está definida
-if [ -z "${DEV_IMAGE}" ]; then
-    echo_error "A variável DEV_IMAGE não está definida no arquivo \"${ENV_PATH_FILE}\""
-    echo_info "Essa variável é usada pelo Dockerfile para definir a imagem base
-    a ser utilizada para construir o contêiner."
-
-    DEV_IMAGE=$(escolher_imagem_base)
-    BASE_IMAGE=$(obter_image_root $DEV_IMAGE)
-
-    echo "DEV_IMAGE: $DEV_IMAGE"
-    echo "BASE_IMAGE: $BASE_IMAGE"
-fi
-
-if [ -z "${DEV_IMAGE}" ]; then
-  echo_error "A variável DEV_IMAGE não está definida no arquivo \"${ENV_PATH_FILE}\""
-  echo_info "Defina o valor dela em \"${ENV_PATH_FILE}\""
-  exit 1
-else
-    DEV_IMAGE="${DEV_IMAGE:-$_base_imagem}"
-
-    if [ -f "$DOCKERFILE_SAMPLE" ] && ! grep -q "$DEV_IMAGE" "$DOCKERFILE_SAMPLE"; then
-      # Substituir a linha que contém "ARG DEV_IMAGE=" pela nova definição
-      sed -i "s|^ARG DEV_IMAGE=.*|ARG DEV_IMAGE=$DEV_IMAGE|" "$DOCKERFILE_SAMPLE"
-      echo_warning "A linha 'ARG DEV_IMAGE=' foi substituída por 'ARG DEV_IMAGE=$DEV_IMAGE' no arquivo $DOCKERFILE_SAMPLE"
+    if [ ! -f ${project_env_path_file} ]; then
+      echo_error "Arquivo #project_env_path_file não encontrado. Impossível continuar!"
+      exit 1
     fi
-fi
 
-if [ ! -f "$DOCKERFILE" ] && [ -f "$DOCKERFILE_SAMPLE" ]; then
-  echo_warning "Detectamos que existe o arquivo $DOCKERFILE_SAMPLE, porém
-  não encontramos o arquivo $DOCKERFILE."
-  echo_info "O arquivo \"$DOCKERFILE\" contem instruções para contrução de uma imagem Docker."
-  echo_info "Deseja copiar o arquivo de modelo $DOCKERFILE para o arquivo definitivo $DOCKERFILE_SAMPLE?"
-  read -p "Pressione 'S' para continuar: " resposta
-  resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+    if [ ! -f "$project_dockerfile_sample" ]; then
+      echo_warning "Arquivo $project_dockerfile_sample não encontrado."
+    elif [ $revisado -eq 0 ]; then
+      echo_warning "Arquivo $project_dockerfile_sample encontrado."
+    fi
 
-  if [ "$resposta" = "S" ]; then
-    echo ">>> cp $DOCKERFILE_SAMPLE $DOCKERFILE"
-    cp "$DOCKERFILE_SAMPLE" "$DOCKERFILE"
-  fi
-fi
+    if [ ! -f "$project_dockerfile" ]; then
+      echo_warning "Arquivo $project_dockerfile não encontrado."
+    fi
 
-if [ ! -f "$DOCKERFILE" ]; then
-  echo_warning "Arquivo $DOCKERFILE não encontrado."
-  echo_info "Crie o arquivo \"Dockerfile\" no diretório raiz (${ROOT_DIR}) do seu projeto."
-fi
+    if [ $revisado -eq 0 ]; then
+      echo_warning "Variável REVISADO=0"
+    fi
+
+    if { [[ $revisado -eq 0 ]] && [[ ! -f "$project_dockerfile_sample" ]]; } || [[ ! -f "$project_dockerfile" ]]; then
+        echo_info "Deseja que este script crie e/ou substitua arquivo modelo (Dockerfile.sample) para seu projeto?"
+        read -p "Pressione 'S' para continuar: " resposta
+        resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
+    fi
+
+    if [ ! -f "$project_dockerfile_sample" ]; then
+
+        if [ -z "${dev_image}" ]; then
+          echo_error "A variável DEV_IMAGE não está definida no arquivo '${project_env_path_file}'"
+          echo_info "Essa variável é usada pelo Dockerfile para definir a imagem base a ser utilizada para construir o contêiner."
+
+          base_image=$(escolher_imagem_base)
+          dev_image=$(read_ini $config_inifile images $base_image | tr -d '\r')
+          filename=$(read_ini $config_inifile dockerfiles $base_image | tr -d '\r')
+          dockerfile_base_dev_sample="${script_dir}/dockerfiles/${filename}"
+
+          echo "base_image: $base_image"
+          echo "dev_image: $dev_image"
+          echo "dockerfile_base_dev_sample: $dockerfile_base_dev_sample"
+        fi
+
+        if [ "$resposta" = "S" ]; then
+            echo ">>> cp ${dockerfile_base_dev_sample} ${project_dockerfile_sample}"
+            cp $dockerfile_base_dev_sample "${project_dockerfile_sample}"
+            echo_success "Arquivo $project_dockerfile_sample criado!"
+            sleep 0.5
+        else
+          echo_warning "Recomendamos criar o arquivo de modelo Dockerfile.sample.
+       Com ele, você pode comparar com o Dockerfile do seu projeto."
+        fi
+    fi
+
+    if [ -z "${dev_image}" ]; then
+        echo_error "A variável DEV_IMAGE não está definida no arquivo '${project_env_path_file}'"
+        echo_info "Defina o valor dela em '${project_env_path_file}'"
+        exit 1
+    else
+        dev_image="${dev_image:-base_image}"
+
+        if [ -f "$project_dockerfile_sample" ] && ! grep -q "${compose_project_name}-dev" "$project_dockerfile_sample"; then
+            # Substitui a primeira linha por "DEV_IMAGE"
+#            echo "--- Substituindo a 1a linha por \"ARG DEV_IMAGE=${dev_image}\" no arquivo $project_dockerfile_sample"
+#            sed -i "1s|.*|ARG DEV_IMAGE=${dev_image}|" "$project_dockerfile_sample"
+
+            # Substituir a linha que contém "ARG DEV_IMAGE=" pela nova definição
+#            echo "--- Substituindo a linha 'ARG DEV_IMAGE=' por 'ARG DEV_IMAGE=${dev_image}' no arquivo $project_dockerfile_sample"
+#            sed -i "s|^ARG DEV_IMAGE=.*|ARG DEV_IMAGE=${dev_image}|" "$project_dockerfile_sample"
+
+            echo "--- Substituindo a linha 'DEV_IMAGE=' por 'DEV_IMAGE=${dev_image}' no arquivo $project_env_path_file"
+            sed -i "s|^DEV_IMAGE=.*|DEV_IMAGE=${dev_image}|" "$project_env_path_file"
+
+            echo "--- Substituindo \"app-dev\" por \"${compose_project_name}-dev\" no arquivo '${project_dockerfile_sample}'"
+            sed -i "s|app-dev|${compose_project_name}-dev|g" "$project_dockerfile_sample"
+        fi
+    fi
+
+    if [ ! -f "$project_dockerfile" ] && [ -f "$project_dockerfile_sample" ]; then
+        echo_warning "Detectamos que existe o arquivo $project_dockerfile_sample, porém não encontramos o arquivo $project_dockerfile."
+        echo_info "O arquivo '$project_dockerfile' contém instruções para construção de uma imagem Docker."
+        echo_info "Deseja copiar o arquivo de modelo $project_dockerfile para o arquivo definitivo $project_dockerfile_sample?"
+        read -p "Pressione 'S' para continuar: " resposta
+        resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
+
+        if [ "$resposta" = "S" ]; then
+            echo ">>> cp $project_dockerfile_sample $project_dockerfile"
+            cp "$project_dockerfile_sample" "$project_dockerfile"
+        fi
+    fi
+
+    if [ ! -f "$project_dockerfile" ]; then
+        echo_warning "Arquivo $project_dockerfile não encontrado."
+        echo_info "Recomendamos criar o arquivo 'Dockerfile' no diretório raiz (${project_root_dir}) do seu projeto."
+    fi
+}
+
+verifica_e_configura_dockerfile_project "$SCRIPT_DIR" "$PROJECT_ROOT_DIR" "$PROJECT_ENV_PATH_FILE" "$COMPOSE_PROJECT_NAME" "$REVISADO" "$DEV_IMAGE"
 
 ##############################################################################
 ### Tratamento para arquivo docker-compose.yml
 ##############################################################################
-DOCKERCOMPOSE_BASE="${SCRIPT_DIR}/docker-compose-base.yml"
-DOCKERCOMPOSE_BASE_SAMPLE="${SCRIPT_DIR}/docker-compose-base-sample.yml"
-DOCKERCOMPOSE_SAMPLE="${ROOT_DIR}/docker-compose.sample.yml"
-DOCKERCOMPOSE="${ROOT_DIR}/docker-compose.yml"
+function verifica_e_configura_dockercompose_project() {
+    local script_dir="$1"
+    local project_root_dir="$2"
+    local project_env_path_file="$3"
+    local revisado="$4"
 
-volume="      - ${SCRIPT_DIR}/scripts:/scripts/"
-if ! grep -q "$volume" "$DOCKERCOMPOSE_BASE"; then
-    # Substituir a linha inteira que contém ': /scripts/'
-    echo ">>> sed -i \"/:\/scripts\//c\\$volume\" $DOCKERCOMPOSE_BASE"
-    sed -i "/:\/scripts\//c\\$volume" "$DOCKERCOMPOSE_BASE"
-fi
+    local dockercompose_base="${script_dir}/docker-compose-base.yml"
+    local dockercompose_base_dev_sample="${script_dir}/docker-compose-base-sample-node.yml"
+    local project_dockercompose_sample="${project_root_dir}/docker-compose.sample.yml"
+    local project_dockercompose="${project_root_dir}/docker-compose.yml"
 
-volume="      - ${SCRIPT_DIR}/scripts/init_database.sh:/docker-entrypoint-initdb.d/init_database.sh"
-if ! grep -q "$volume" "$DOCKERCOMPOSE_BASE"; then
-    # Substituir a linha inteira que contém ': /scripts/'
-    echo ">>> sed -i \"/:\/scripts\//c\\$volume\" $DOCKERCOMPOSE_BASE"
-    sed -i "/init_database.sh/c\\$volume" "$DOCKERCOMPOSE_BASE"
-fi
+    local volume="      - ${script_dir}/scripts:/scripts/"
+    if ! grep -q "$volume" "$dockercompose_base"; then
+        echo ">>> sed -i \"/:\/scripts\//c\\$volume\" $dockercompose_base"
+        sed -i "/:\/scripts\//c\\$volume" "$dockercompose_base"
+    fi
 
-#
-if { [[ $REVISADO -eq 0 ]] && [[ ! -f "$DOCKERCOMPOSE_SAMPLE" ]]; } || [[ ! -f "$DOCKERCOMPOSE" ]]; then
-  echo_warning "Arquivo $DOCKERCOMPOSE_SAMPLE não encontrado."
-  echo_info "Esse arquivo é um modelo de configuração docker compose com exemplo básico
-  de como usar a arquiterua \"Docker Service\".
-  Deseja que este script crie um arquivo modelo (docker-compose.sample.yml) padrão para seu projeto?"
-  read -p "Pressione 'S' para continuar: " resposta
-  resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+    volume="      - ${script_dir}/scripts/init_database.sh:/docker-entrypoint-initdb.d/init_database.sh"
+    if ! grep -q "$volume" "$dockercompose_base"; then
+        echo ">>> sed -i \"/:\/scripts\//c\\$volume\" $dockercompose_base"
+        sed -i "/init_database.sh/c\\$volume" "$dockercompose_base"
+    fi
 
-  if [ "$resposta" = "S" ]; then
-      echo ">>> cp ${DOCKERCOMPOSE_BASE_SAMPLE} ${DOCKERCOMPOSE_SAMPLE}"
-      cp "${DOCKERCOMPOSE_BASE_SAMPLE}" "${DOCKERCOMPOSE_SAMPLE}"
-      echo_success "Arquivo $DOCKERCOMPOSE_SAMPLE criado!"
-      sleep 0.5
-  fi
-fi
+    if { [[ $revisado -eq 0 ]] && [[ ! -f "$project_dockercompose_sample" ]]; } || [[ ! -f "$project_dockercompose" ]]; then
+        echo_warning "Arquivo $project_dockercompose_sample não encontrado."
+        echo_info "Esse arquivo é um modelo de configuração docker compose com exemplo básico de como usar a arquitetura \"Docker Service\"."
+        echo_info "Deseja que este script crie um arquivo modelo (docker-compose.sample.yml) padrão para seu projeto?"
+        read -p "Pressione 'S' para continuar: " resposta
+        resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
 
-if [ -f "$DOCKERCOMPOSE_SAMPLE" ] && ! grep -q "${ENV_PATH_FILE}" "$DOCKERCOMPOSE_SAMPLE"; then
-#  echo "---  Substituir docker-compose-base-sample.yml por ${DOCKERCOMPOSE_SAMPLE} no arquivo $DOCKERCOMPOSE_SAMPLE"
-#  echo ">>> sed -i \"s|docker-compose-base-sample.yml|${DOCKERCOMPOSE_SAMPLE}|g\" $DOCKERCOMPOSE_SAMPLE"
-#  sed -i "s|docker-compose-base-sample.yml|${DOCKERCOMPOSE_SAMPLE}|g" "$DOCKERCOMPOSE_SAMPLE"
-  
-  echo ">>> -i \"s|.env.sample|${ENV_PATH_FILE}|g\" $DOCKERCOMPOSE_SAMPLE"
-  sed -i "s|.env.sample|${ENV_PATH_FILE}|g" "$DOCKERCOMPOSE_SAMPLE"
-  
-fi
+        if [ "$resposta" = "S" ]; then
+            echo ">>> cp ${dockercompose_base_dev_sample} ${project_dockercompose_sample}"
+            cp "${dockercompose_base_dev_sample}" "${project_dockercompose_sample}"
+            echo_success "Arquivo $project_dockercompose_sample criado!"
+            sleep 0.5
+        fi
+    fi
 
-if [ ! -f "$DOCKERCOMPOSE" ] && [ -f "$DOCKERCOMPOSE_SAMPLE" ]; then
-  echo_warning "Detectamos que existe o arquivo $DOCKERCOMPOSE_SAMPLE, porém
-  não encontramos o arquivo $DOCKERCOMPOSE."
-  echo_info "O arquivo \"$DOCKERCOMPOSE\" é um arquivo de configuração usado pela
-  ferramenta \"Docker Compose\" para definir e gerenciar múltiplos contêineres
-  \"Docker\" como um serviço. Ele utiliza a linguagem de marcação YAML para descrever
-  a configuração de serviços, redes, volumes e outros parâmetros que são usados
-  na orquestração de contêineres."
-  echo_info "Deseja copiar o arquivo de modelo $DOCKERCOMPOSE_SAMPLE para o arquivo definitivo $DOCKERCOMPOSE?"
-  read -p "Pressione 'S' para continuar: " resposta
-  resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+    if [ -f "$project_dockercompose_sample" ] && ! grep -q "${project_env_path_file}" "$project_dockercompose_sample"; then
+        echo ">>> sed -i \"s|.env.sample|${project_env_path_file}|g\" $project_dockercompose_sample"
+        sed -i "s|.env.sample|${project_env_path_file}|g" "$project_dockercompose_sample"
+    fi
 
-  if [ "$resposta" = "S" ]; then
-    echo ">>> cp $DOCKERCOMPOSE_SAMPLE $DOCKERCOMPOSE"
-    cp "$DOCKERCOMPOSE_SAMPLE" "$DOCKERCOMPOSE"
-  fi
-fi
+    if [ ! -f "$project_dockercompose" ] && [ -f "$project_dockercompose_sample" ]; then
+        echo_warning "Detectamos que existe o arquivo $project_dockercompose_sample, porém não encontramos o arquivo $project_dockercompose."
+        echo_info "O arquivo \"$project_dockercompose\" é um arquivo de configuração usado pela ferramenta \"Docker Compose\" para definir e gerenciar múltiplos contêineres \"Docker\" como um serviço."
+        echo_info "Deseja copiar o arquivo de modelo $project_dockercompose_sample para o arquivo definitivo $project_dockercompose?"
+        read -p "Pressione 'S' para continuar: " resposta
+        resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
 
-if [ ! -f "$DOCKERCOMPOSE" ]; then
-  echo_error "Arquivo $DOCKERCOMPOSE não encontrado."
-  echo_info "Crie o arquivo \"docker-compose.yml\" no diretório raiz (${ROOT_DIR}) do seu projeto."
-  exit 1
-fi
+        if [ "$resposta" = "S" ]; then
+            echo ">>> cp $project_dockercompose_sample $project_dockercompose"
+            cp "$project_dockercompose_sample" "$project_dockercompose"
+        fi
+    fi
+
+    if [ ! -f "$project_dockercompose" ]; then
+        echo_error "Arquivo $project_dockercompose não encontrado."
+        echo_info "Crie o arquivo \"docker-compose.yml\" no diretório raiz (${project_root_dir}) do seu projeto."
+        exit 1
+    fi
+}
+
+verifica_e_configura_dockercompose_project "$SCRIPT_DIR" "$PROJECT_ROOT_DIR" "$PROJECT_ENV_PATH_FILE" "$REVISADO"
 
 ##############################################################################
 ### Inserindo varíaveis com valores padrão no início do arquivo .env
-##############################################################################
-insert_text_if_not_exists "VPN_GATEWAY_FAIXA_IP=${VPN_GATEWAY_FAIXA_IP}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "VPN_GATEWAY=${VPN_GATEWAY}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "GID=${USER_GID}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "UID=${USER_UID}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "APP_PORT=${APP_PORT}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "REQUIREMENTS_FILE=${REQUIREMENTS_FILE}" "$ENV_PATH_FILE_SAMPLE"
-insert_text_if_not_exists "DOCKERFILE=${DOCKERFILE}" "$ENV_PATH_FILE_SAMPLE"
-insert_text_if_not_exists "BASE_IMAGE=${BASE_IMAGE}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "DEV_IMAGE=${DEV_IMAGE}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "WORK_DIR=${WORK_DIR}" "$ENV_PATH_FILE"
-insert_text_if_not_exists "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" "$ENV_PATH_FILE"
+###############################################################################
+# Só insere caso a variável não exista.
 
+insert_text_if_not_exists "DATABASE_DUMP_DIR=${DATABASE_DUMP_DIR}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "DATABASE_NAME=${DATABASE_NAME}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "VPN_GATEWAY_FAIXA_IP=${VPN_GATEWAY_FAIXA_IP}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "VPN_GATEWAY=${VPN_GATEWAY}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "GID=${USER_GID}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "UID=${USER_UID}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "USER_NAME=${USER_NAME}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "APP_PORT=${APP_PORT}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "REQUIREMENTS_FILE=${REQUIREMENTS_FILE}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "DOCKERFILE=${PROJECT_DOCKERFILE}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "POSTGRES_IMAGE=${POSTGRES_IMAGE}" "$PROJECT_ENV_PATH_FILE"
+#insert_text_if_not_exists "BASE_IMAGE=${BASE_IMAGE}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "DEV_IMAGE=${DEV_IMAGE}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "GIT_BRANCH_MAIN=${GIT_BRANCH_MAIN}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "WORK_DIR=${WORK_DIR}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" "$PROJECT_ENV_PATH_FILE"
 ##############################################################################
 ### TRATAMENTO DAS VARIÁVEIS DEFINDAS EM .ENV
 ##############################################################################
@@ -548,9 +544,9 @@ insert_text_if_not_exists "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" "$ENV_P
 
 #Se não existir o arquivo ${ENV_PATH_FILE}, copie de $CURRENT_DIRECTORY/.env.dev.sample
 if [ "$REVISADO" -eq 0 ]; then
-  imprime_variaveis_env
-  echo_warning "Acima segue TODO os valores das variáveis definidas no arquivo \"${ENV_PATH_FILE}\"."
-  echo_warning "
+  imprime_variaveis_env $PROJECT_ENV_PATH_FILE
+  echo_warning "Acima segue TODO os valores das variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
+  echo "
   Segue abaixo as princípais variáveis:
     * Variável de configuração de caminho de arquivos:
         - BASE_DIR=${BASE_DIR}
@@ -562,24 +558,42 @@ if [ "$REVISADO" -eq 0 ]; then
             Exemplo: REQUIREMENTS_FILE=requiriments.txt
         - WORK_DIR=${WORK_DIR} -- deve apontar para o diretório dentro do container onde está o código fonte da aplicação.
 
-    * Variável de nomes de arquivos:
+    * Variável de nomes de arquivos de configuração do Django:
         - SETTINGS_SAMPLE_LOCAL_FILE=${SETTINGS_SAMPLE_LOCAL_FILE}
         - SETTINGS_LOCAL_FILE=${SETTINGS_LOCAL_FILE}
 
     * Variável de configuração de banco:
         - DATABASE_NAME=${DATABASE_NAME}
-        - DATABASE_HOST=${DATABASE_HOST}
-        - DATABASE_PORT=${DATABASE_PORT}
         - DATABASE_USER=${DATABASE_USER}
         - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+        - DATABASE_HOST=${DATABASE_HOST}
+        - DATABASE_PORT=${DATABASE_PORT}
 
     * Definições de portas para acesso externo ao containers, acesso à máquina host.
         - APP_PORT=${APP_PORT}
         - PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT}
         - REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT}
 
+    * Definições de imagens
+       - DEV_IMAGE=${DEV_IMAGE}
+       - PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}
+       - POSTGRES_IMAGE=${POSTGRES_IMAGE}
+
+    * Configurações para criação de usuário no container web
+       Este usuário isola as modificações dentro do container, evitando que alterações nas permissões dos arquivos
+       do projeto afetem da máquina local host.
+       - USER_NAME=${USER_NAME}
+       - USER_UID=${USER_UID}
+       - USER_GID=${USER_GID}
+
+    * Configuração da rede interna
+      - VPN_GATEWAY_FAIXA_IP=${VPN_GATEWAY_FAIXA_IP}
+      - VPN_GATEWAY=${VPN_GATEWAY}
+
     * Demais varíaveis:
        - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
+       - GIT_BRANCH_MAIN=${GIT_BRANCH_MAIN}
+       - DOCKERFILE=${PROJECT_DOCKERFILE}
 
     * Variáveis par definição de acesso via VPN. [OPCIONAIS]
         - VPN_WORK_DIR=${VPN_WORK_DIR}  -- diretório onde estão os arquivos do container VPN
@@ -600,55 +614,62 @@ if [ "$REVISADO" -eq 0 ]; then
             route.domain.local:10.10.0.144
             \"
   "
+  echo_warning "Acima segue as principais variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
   echo_info "Antes de prosseguir, revise o conteúdo das variáveis apresentadas acima.
-  Copie a definição \"REVISADO=1\" e cole no arquivo $ENV_PATH_FILE
-  para está mensagem não mais ser exibida."
+  Copie a definição \"REVISADO=1\" e cole no arquivo $ENV_PATH_FILE para está mensagem não mais ser exibida."
   echo "Tecle [ENTER] para continuar"
   read
 fi
 
 ############ Tratamento para recuperar os arquivos docker-compose ############
-#ln -sf $CURRENT_FILE_NAME_PATH /usr/local/bin/container
+function get_compose_command() {
+  local dict_services_commands="$1"
+  local dict_composes_files="$2"
+  local project_dev_dir="$3"
+  local script_dir="$4"
 
-_services=($(dict_keys "${DICT_SERVICES_COMMANDS[*]}"))
-_composes_files=()
+  local services=($(dict_keys "${dict_services_commands[*]}"))
+  local composes_files=()
 
-for s in ${_services[*]}; do
-  _file=$(dict_get "$s" "${DICT_COMPOSES_FILES[*]}")
-  if [ ! -z "$_file" ]; then
-    _composes_files+=("-f $DOCKER_DEV_DIR/$_file")
-  fi
-done
+  for service in ${services[*]}; do
+    local file=$(dict_get "$service" "${dict_composes_files[*]}")
+    if [ ! -z "$file" ]; then
+      composes_files+=("-f $project_dev_dir/$file")
+    fi
+  done
 
-COMPOSE="docker compose -f ${SCRIPT_DIR}/docker-compose-base.yml ${_composes_files[*]}"
+  # Retornar o valor de COMPOSE
+  COMPOSE="docker compose -f ${script_dir}/docker-compose-base.yml ${composes_files[*]}"
+  echo "$COMPOSE"
+}
 
-
+COMPOSE=$(get_compose_command "$DICT_SERVICES_COMMANDS" "$DICT_COMPOSES_FILES" "$PROJECT_DEV_DIR" "$SCRIPT_DIR")
 ########################## Validações das variávies ##########################
 sair=0
 
 # Verificar se a variável COMPOSE_PROJECT_NAME está definida
 if [ -z "${COMPOSE_PROJECT_NAME}" ]; then
-    echo_error "A variável COMPOSE_PROJECT_NAME não está definida no arquivo \"${ENV_PATH_FILE}\""
+    echo_error "A variável COMPOSE_PROJECT_NAME não está definida no arquivo \"${PROJECT_ENV_PATH_FILE}\""
     echo_info "Essa variável é usada pelo Docker Compose para definir o nome do projeto.
     O nome do projeto serve como um \"prefixo\" comum para os recursos criados por aquele projeto,
     como redes, volumes, containers e outros objetos Docker."
-    echo_info "Sugestão de nome \"COMPOSE_PROJECT_NAME=PROJECT_NAME\". Copie e cole essa definição no arquivo \"${ENV_PATH_FILE}\""
+    echo_info "Sugestão de nome \"COMPOSE_PROJECT_NAME=PROJECT_NAME\". Copie e cole essa definição no arquivo \"${PROJECT_ENV_PATH_FILE}\""
     sair=1
 fi
 
 if [ ! -d "$BASE_DIR" ]; then
   echo_error "Diretório base do projeto $BASE_DIR não existe.!"
-  echo_info "Defina o nome dele na variável \"BASE_DIR\" em \"${ENV_PATH_FILE}\""
+  echo_info "Defina o nome dele na variável \"BASE_DIR\" em \"${PROJECT_ENV_PATH_FILE}\""
   sair=1
 fi
 
-file_requirements_txt="${ROOT_DIR}/${REQUIREMENTS_FILE}"
+file_requirements_txt="${PROJECT_ROOT_DIR}/${REQUIREMENTS_FILE}"
 
 if [ ! -f "$file_requirements_txt" ]; then
   echo ""
   echo_error "Arquivo $file_requirements_txt não existe.!"
   echo_info "Esse arquivo possui as bibliotecas necessárias para a aplicação funcionar."
-  echo_info "Defina o nome dele na variável \"REQUIREMENTS_FILE\" em \"${ENV_PATH_FILE}\""
+  echo_info "Defina o nome dele na variável \"REQUIREMENTS_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
   sair=1
 fi
 
@@ -657,7 +678,7 @@ if [ ! -f "$BASE_DIR/$settings_sample_local_file" ]; then
   echo ""
   echo_error "Arquivo $BASE_DIR/$settings_sample_local_file não existe.!"
   echo_info "Esse arquivo é o modelo de configurações mínimas necessárias para a aplicação funcionar."
-  echo_info "Defina o nome dele na variável \"SETTINGS_SAMPLE_LOCAL_FILE\" em \"${ENV_PATH_FILE}\""
+  echo_info "Defina o nome dele na variável \"SETTINGS_SAMPLE_LOCAL_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
   sair=1
 fi
 
@@ -672,7 +693,7 @@ if [ ! -f "$BASE_DIR/$settings_local_file" ]; then
   echo ""
   echo_error "Arquivo $BASE_DIR/$settings_local_file não existe.!"
   echo_info "Esse arquivo possui as configurações mínimas necessárias para a aplicação funcionar."
-  echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE\" em \"${ENV_PATH_FILE}\""
+  echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
   sair=1
 fi
 
@@ -922,6 +943,8 @@ function process_command() {
     command_web_django_debug "${_service_name}" "$ARG_OPTIONS"
   elif [ "$ARG_COMMAND" = "pre-commit" ]; then
     command_pre_commit "${_service_name}" "$ARG_OPTIONS"
+  elif [ "$ARG_COMMAND" = "git" ]; then
+    command_git "${_service_name}" "$ARG_OPTIONS"
   else
     echo_warning "Comando $ARG_COMMAND sem função associada"
   fi
@@ -1272,11 +1295,8 @@ function database_db_restore() {
       cat "$DIR_DUMP/restore.log"
     fi
   else
-    echo_error "Falha ao executar $DOCKER_DEV_DIR/scripts/init_database.sh"
+    echo_error "Falha ao executar $PROJECT_DEV_DIR/scripts/init_database.sh"
   fi
-  #  else
-  #    echo "Arquivo de dump não encontrado."
-  #  fi
   return $_success
 
 }
@@ -1333,11 +1353,28 @@ function command_pre_commit() {
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
-    echo ">>> $COMPOSE exec $_service_name $_option  bash -c \"git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
-    $COMPOSE exec "$_service_name" $_option bash -c "git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
+    echo ">>> $COMPOSE exec $_service_name bash -c \"id && git config --global --add safe.directory $WORKDIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
+    $COMPOSE exec "$_service_name" bash -c "id && git config --global --add safe.directory $WORKDIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
   else
-    echo ">>> $COMPOSE run --rm $_service_name $_option \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
-    $COMPOSE run --rm  "$_service_name" bash -c $_option "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
+    echo ">>> $COMPOSE run --rm $_service_name \"id && git config --global --add safe.directory $WORKDIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
+    $COMPOSE run --rm  "$_service_name" bash -c "id && git config --global --add safe.directory $WORKDIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
+  fi
+}
+
+function command_git() {
+  local _service_name="$1"
+  shift # Remover o primeiro argumento posicional ($1) -- Remove o nome do serviço da lista de argumentos
+  local _option="$@"
+  echo ">>> ${FUNCNAME[0]} $_service_name $_option"
+
+  command_pre_commit "$service_name" "$_option"
+
+  if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
+    echo ">>> $COMPOSE exec $_service_name git $_option"
+    $COMPOSE exec "$_service_name" git "$_option"
+  else
+    echo ">>> $COMPOSE run $_service_name git $_option"
+    $COMPOSE runt "$_service_name" git "$_option"
   fi
 }
 
@@ -1545,6 +1582,8 @@ function main() {
   local services_local=($(dict_keys "${DICT_SERVICES_COMMANDS[*]}"))
   local all_commands_local=("${specific_commands_local[@]}")
   all_commands_local+=("${COMMANDS_COMUNS[@]}")
+
+  create_pre_push_hook "$COMPOSE" "$SERVICE_WEB_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
 
   error_danger=""
   error_warning=""

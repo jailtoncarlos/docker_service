@@ -1,5 +1,5 @@
-ARG PYTHON_BASE=python:3.12-slim-bullseye
-FROM ${PYTHON_BASE} AS python-base
+ARG PYTHON_BASE_IMAGE=python:3.12-slim-bullseye
+FROM ${PYTHON_BASE_IMAGE} AS python-base
 
 # Env variables
 # Desabilita o buffering de saída padrão do Python.

@@ -1,6 +1,6 @@
-# Primeiro estágio: a partir da imagem base do nodejs
-ARG PYTHON_NODEJS_BASE_IMAGE=python-nodejs-base
-FROM ${PYTHON_NODEJS_BASE_IMAGE} AS python-nodejs-dev
+# Primeiro estágio: a partir da imagem python base
+ARG PYTHON_BASE_DEV=python-base:latest
+FROM ${PYTHON_BASE_DEV} AS python-base-dev
 
 ARG WORK_DIR="/opt/app"
 ARG REQUIREMENTS_FILE=requirements.txt
@@ -38,7 +38,7 @@ RUN python -m pip install --upgrade pip
 RUN pip install pre-commit
 
 # 2o estágio: a partir do 1o estágio
-ARG DEV_IMAGE=python-nodejs-dev:latest
+ARG DEV_IMAGE=python-base-dev:latest
 FROM ${DEV_IMAGE} AS app-dev
 
 ARG WORK_DIR="/opt/app"

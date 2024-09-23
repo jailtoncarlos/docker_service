@@ -356,75 +356,76 @@ function is_first_initialization() {
     fi
 }
 
-# Função para testar conexão ao PostgreSQL e ajustar comando PG_COMMAND
+# Função para testar conexão ao PostgreSQL e ajustar comando psql_command
 #testar_conexao_postgres()
 function get_host_port() {
     local postgres_host="$1"
     local postgres_port="$2"
     local postgres_user="$3"
-    local postgres_password="$4"
-    local pg_command
-    local resultado
+    local postgres_db="$4"
+    local postgres_password="$5"
+    local psql_command
+    local psql_output
 
     export PGPASSWORD=$postgres_password
 
-    # Testar conexão com localhost e a porta fornecida
-    pg_command="psql -v ON_ERROR_STOP=1 --host=localhost --port=$postgres_port --username=$postgres_user"
-    resultado=$($pg_command -tc "SELECT 1;" 2>&1)
-    # Remove espaços em branco da variável 'resultado'
-    resultado=$(echo "$resultado" | xargs)
+    # Testar conexão com o host fornecido e a porta fornecida
+    psql_command="psql -v ON_ERROR_STOP=1 --host=$postgres_host --port=$postgres_port --username=$postgres_user --dbname=$postgres_db"
+    psql_output=$($psql_command -tc "SELECT 1;" )
+    # Remove espaços em branco da variável 'psql_output'
+    psql_output=$(echo "$psql_output" | xargs)
+    if [ "$psql_output" == "1" ]; then
+        echo "$postgres_host $postgres_port"
+        return 0
+    fi
 
-    if [ "$resultado" == "1" ]; then
+    # Testar conexão sem host e a porta fornecida
+    psql_command="psql -v ON_ERROR_STOP=1 --port=$postgres_port --username=$postgres_user"
+    psql_output=$($psql_command -tc "SELECT 1;" 2>&1)
+    psql_output=$(echo "$psql_output" | xargs)
+    if [ "$psql_output" == "1" ]; then
+        echo "$postgres_host $postgres_port"
+        return 0
+    fi
+
+    # Testar conexão com localhost e a porta fornecida
+    psql_command="psql -v ON_ERROR_STOP=1 --host=localhost --port=$postgres_port --username=$postgres_user"
+    psql_output=$($psql_command -tc "SELECT 1;"  2>&1)
+    psql_output=$(echo "$psql_output" | xargs)
+    if [ "$psql_output" == "1" ]; then
         echo "localhost $postgres_port"
         return 0
     fi
 
     # Testar conexão com localhost e porta 5432 (default)
-    pg_command="psql -v ON_ERROR_STOP=1 --host=localhost --port=5432 --username=$postgres_user"
-    resultado=$($pg_command -tc "SELECT 1;" 2>&1)
-    resultado=$(echo "$resultado" | xargs)
-    if [ "$resultado" == "1" ]; then
+    psql_command="psql -v ON_ERROR_STOP=1 --host=localhost --port=5432 --username=$postgres_user"
+    psql_output=$($psql_command -tc "SELECT 1;"  2>&1)
+    psql_output=$(echo "$psql_output" | xargs)
+    if [ "$psql_output" == "1" ]; then
         echo "localhost 5432"
         return 0
     fi
 
-    # Testar conexão com o host fornecido e a porta fornecida
-    pg_command="psql -v ON_ERROR_STOP=1 --host=$postgres_host --port=$postgres_port --username=$postgres_user"
-    resultado=$($pg_command -tc "SELECT 1;" 2>&1)
-    resultado=$(echo "$resultado" | xargs)
-    if [ "$resultado" == "1" ]; then
-        echo "$postgres_host $postgres_port"
-        return 0
-    fi
-
     # Testar conexão com o host fornecido e porta 5432 (default)
-    pg_command="psql -v ON_ERROR_STOP=1 --host=$postgres_host --port=5432 --username=$postgres_user"
-    resultado=$($pg_command -tc "SELECT 1;" 2>&1)
-    resultado=$(echo "$resultado" | xargs)
-    if [ "$resultado" == "1" ]; then
+    psql_command="psql -v ON_ERROR_STOP=1 --host=$postgres_host --port=5432 --username=$postgres_user"
+    psql_output=$($psql_command -tc "SELECT 1;" 2>&1)
+    psql_output=$(echo "$psql_output" | xargs)
+    if [ "$psql_output" == "1" ]; then
         echo "$postgres_host port=5432"
         return 0
     fi
 
-    # Testar conexão sem host e a porta fornecida
-    pg_command="psql -v ON_ERROR_STOP=1 --port=$postgres_port --username=$postgres_user"
-    resultado=$($pg_command -tc "SELECT 1;" 2>&1)
-    resultado=$(echo "$resultado" | xargs)
-    if [ "$resultado" == "1" ]; then
-        echo "$postgres_host $postgres_port"
-        return 0
-    fi
-
     # Testar conexão sem host e porta 5432 (default)
-    pg_command="psql -v ON_ERROR_STOP=1 --host=$postgres_host --port=5432 --username=$postgres_user"
-    resultado=$($pg_command -tc "SELECT 1;" 2>&1)
-    if [ "$resultado" == "1" ]; then
+    psql_command="psql -v ON_ERROR_STOP=1  --port=5432 --username=$postgres_user"
+    psql_output=$($psql_command -tc "SELECT 1;" 2>&1)
+    psql_output=$(echo "$psql_output" | xargs)
+    if [ "$psql_output" == "1" ]; then
         echo "$postgres_host 5432"
         return 0
     fi
 
     # Se todas as tentativas falharem
-    echo_error "Falha ao conectar ao PostgreSQL."
+    echo "Falha ao conectar ao PostgreSQL."
     return 1
 }
 

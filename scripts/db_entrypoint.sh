@@ -38,7 +38,8 @@ fi
 ### FUNÇÕES UTILITÁRIAS
 ##############################################################################
 verificar_conexao_postgres() {
-    echo ">>> Verificando a conexão com o banco de dados remoto: $POSTGRES_DB no host $POSTGRES_HOST:$POSTGRES_PORT"
+    local postgresql="postgresql://$POSTGRES_USER:********@$POSTGRES_HOST:$POSTGRES_PORT/"
+    echo ">>> Verificando a conexão com o banco de dados remoto: $postgresql"
 
     # Define uma variável para verificar o status da conexão
     local conexao_estabelecida=1

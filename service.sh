@@ -1240,39 +1240,41 @@ function service_stop() {
 
 function service_db_wait() {
   local _service_name=$SERVICE_DB_NAME
+  local host
+  local port
+
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
+
   echo "--- Aguardando a base de dados ..."
 
   # Chamar a função para obter o host e a porta correta
   _return_func=1
 
+  echo ">>> [LOOP] $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"source /scripts/utils.sh && get_host_port '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '*********'\""
   # Loop until para continuar tentando até que _return_func seja igual a 1
   until [ $_return_func -eq 0 ]; do
     echo_warning "Tentando conectar ao banco de dados..."
-
     # Executa o comando dentro do contêiner
-    psql_output=$($COMPOSE exec -T $SERVICE_DB_NAME bash -c 'source /scripts/utils.sh && get_host_port "db" "5432" "postgres" "postgres"')
+    psql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "source /scripts/utils.sh && get_host_port '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '$POSTGRES_PASSWORD'")
     _return_func=$?
 
     # Se a função retornar com sucesso (_return_func igual a 1)
     if [ $_return_func -eq 0 ]; then
       # Extrai o host e a porta do output
-      read host port <<< "$psql_output"
-      echo "host: $host, port: $port"
+      read -r host port <<< "$psql_output"
     fi
 
     # Pequena pausa antes de tentar novamente (opcional)
     sleep 2
   done
 
+  psql_command="psql -v ON_ERROR_STOP=1 --host=$host --port=$port --username=$POSTGRES_USER --dbname=$POSTGRES_DB"
 
-  pg_command="psql -v ON_ERROR_STOP=1 --host=$host --port=$port --username=$POSTGRES_USER"
-
-  echo ">>> sql_output=$($COMPOSE exec -T $SERVICE_DB_NAME bash -c \"PGPASSWORD=$POSTGRES_PASSWORD $pg_command -tc ''SELECT 1;''\" 2>&1)"
-  until sql_output=$($COMPOSE exec -T $SERVICE_DB_NAME bash -c "PGPASSWORD=$POSTGRES_PASSWORD $pg_command -tc 'SELECT 1;'" 2>&1); do
+  echo ">>> [LOOP] $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"PGPASSWORD=$POSTGRES_PASSWORD $psql_command -tc 'SELECT 1;'\" 2>&1"
+  until sql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "PGPASSWORD=$POSTGRES_PASSWORD $psql_command -tc 'SELECT 1;'" 2>&1); do
     psql_output=$(echo "$psql_output" | xargs)  # remove espaços
-    echo_warning "Postgres não disponível - aguardando... "
     echo "Detalhes do erro: $psql_output"
+    echo_warning "Postgres não disponível - aguardando... "
     sleep 2
   done
 
@@ -1359,25 +1361,29 @@ function database_wait() {
   service_db_wait
 
   # Chamar a função para obter o host e a porta correta
-  psql_output=$($COMPOSE exec -T $SERVICE_DB_NAME bash -c 'source /scripts/utils.sh && get_host_port "db" "5432" "postgres" "postgres"')
-  read host port <<< $psql_output
-  if [ $? -gt 0 ]; then
+  echo ">>> $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"source /scripts/utils.sh && get_host_port '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '*********'\""
+  psql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "source /scripts/utils.sh && get_host_port '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '$POSTGRES_PASSWORD'")
+  _return_func=$?
+  if [ $_return_func -eq 0 ]; then
+    read host port <<< $psql_output
+  else
     echo_error "Não foi possível conectar ao banco de dados."
     exit 1
   fi
 
   local _psql="psql -h $host -p $port -U $POSTGRES_USER -d $POSTGRES_DB"
-  echo "$_psql"
 
   # Definindo o comando psql para verificar a presença de migrações
   local psql_cmd="$_psql -tc 'SELECT COUNT(*) > 0 FROM django_migrations;'"
 
   echo "--- Aguardando o banco de dados ficar pronto..."
   # Loop até que a consulta retorne verdadeiro (ou seja, 't')
-  echo ">>> $COMPOSE exec -e PGPASSWORD=********* $SERVICE_DB_NAME  sh -c  $psql_cmd  | grep -q 't'"
-  until $COMPOSE exec -e PGPASSWORD=$POSTGRES_PASSWORD "$SERVICE_DB_NAME" sh -c "$psql_cmd" | grep -q 't'; do
+  echo ">>> [LOOP] $COMPOSE exec -e PGPASSWORD=********* $SERVICE_DB_NAME  sh -c  $psql_cmd  | grep -q 't'"
+  until psql_output=$($COMPOSE exec -e PGPASSWORD=$POSTGRES_PASSWORD "$SERVICE_DB_NAME" sh -c "$psql_cmd" | grep -q 't'); do
+    psql_output=$(echo "$psql_output" | xargs)  # remove espaços
+    echo "Detalhes do erro: $psql_output"
     echo_warning "O banco de dados ainda não está pronto, aguardando... "
-    sleep 5  # Aguarda 5 segundos antes de tentar novamente
+    sleep 2
   done
   echo_success "Banco de dados $POSTGRES_DB está pronto para uso."
 }
@@ -1433,6 +1439,7 @@ function _service_db_up() {
 
   if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
     echo_warning "O container Postgres já está em execução"
+    service_logs "$_service_name" "$_option"
   else
     echo "$COMPOSE up $_option $_service_name"
     $COMPOSE up $_option $_service_name

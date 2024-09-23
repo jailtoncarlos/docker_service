@@ -31,6 +31,9 @@ if [ -n "$PG_VERSION" ]; then
 fi
 source "$UTILS_SH"
 
+# 2>/dev/null: Redireciona apenas a saída padrão (stdout) para /dev/null, descartando todas
+# as saídas normais, mas permitindo que os erros (stderr) ainda sejam exibidos.
+
 ZIPDUMP=$(ls $DIR_DUMP/*.{bkp.gz,sql.gz,tar.gz} 2>/dev/null  | head -n 1)
 SQLDUMP=$(ls $DIR_DUMP/*.sql 2>/dev/null)
 
@@ -290,6 +293,9 @@ function restaurar_dump_pg_restore() {
     # Executa o pg_restore e salva o log de saída em /dump/restore.log
     # Executa pg_restore com paralelismo (4 processos - -j 4)
     if is_script_initdb; then
+       # 2>&1: redireciona a saída de erro (stderr) para onde a saída padrão (stdout) está indo.
+       # Isso faz com que tanto stdout quanto stderr sejam combinados e enviados para o mesmo destino
+
       # O comando tee, além de salvar o log na saída /dump/restore.log, exibe também no terminal
       echo ">>> pg_restore -h $host -p $postgres_port -U $postgres_user -d $postgres_db -j 4 -Fd -O $sqldump -v 2>&1 | tee /dump/restore.log"
       echo_warning "Para acompanhar o progresso, use o comando tail -f "

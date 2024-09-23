@@ -24,8 +24,8 @@ if [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ]; then
   exit 1
 else
   mensagem=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
-  retorno_funcao=$?
-  if [ $retorno_funcao -eq 1 ]; then
+  _return_func=$?
+  if [ $_return_func -eq 1 ]; then
       echo_error "Ambiente de desenvolvimento não identificado."
       echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto."
       exit 1
@@ -176,8 +176,8 @@ REDIS_EXTERNAL_PORT=6379
 PGADMIN_EXTERNAL_PORT=8001
 
 USER_NAME=$(id -un)
-UID=$(id -g)
-GID=$(id -u)
+USER_UID=$(id -g)
+USER_GID=$(id -u)
 
 VPN_GATEWAY=${default_vpn_gateway_ip}
 VPN_GATEWAY_FAIXA_IP=${default_vpn_gateway_faixa_ip}
@@ -243,13 +243,24 @@ configura_env() {
   export $(xargs -0 < "${project_env_path_file}") 2> /dev/null
 
   # Carrega o conteúdo do arquivo env diretamente no script
-  source "${project_env_path_file}" 2>/dev/null
+  # &>/dev/null: Redireciona tanto a saída padrão (stdout) quanto a saída de erro (stderr) para /dev/null, que é um "buraco negro" no SO
+  # Silenciar completamente qualquer tipo de saída do comando.
+  source "${project_env_path_file}" &>/dev/null
 
   # Imprime as variáveis de ambiente
 #  imprime_variaveis_env "${project_env_path_file}"
 }
 
 configura_env "$PROJECT_ENV_FILE_SAMPLE" "$PROJECT_ENV_PATH_FILE"
+_return_func=$?
+if [ "$_return_func" -ne 0 ]; then
+  echo_error "Problema relacionado ao conteúdo do arquivo .env."
+  echo_warning "Certifique-se de que o arquivo .env está formatado corretamente, especialmente
+  para variáveis multilinha, que devem ser delimitadas corretamente. O uso de aspas (\") ou
+  barras invertidas (\\) para indicar continuação de linha deve ser consistente.
+  "
+  exit 1
+fi
 
 ##############################################################################
 ### CONVERTENDO ARRAY DO .ENV NA TAD DICT
@@ -338,7 +349,6 @@ fi
 PROJECT_DOCKERCOMPOSE="${dockercompose:-$DEFAULT_PROJECT_DOCKERCOMPOSE}"
 PROJECT_DOCKERCOMPOSE_SAMPLE="$(dirname $PROJECT_DOCKERCOMPOSE)/$(basename $DEFAULT_PROJECT_DOCKERCOMPOSE_SAMPLE)"
 
-
 PYTHON_BASE_IMAGE="${PYTHON_BASE_IMAGE:-3.12-slim-bullseye}"
 #DEV_IMAGE="${DEV_IMAGE:-python-nodejs-base}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16.3}"
@@ -349,8 +359,8 @@ REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT:-6379}
 PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT:-8001}
 
 USER_NAME=${USER_NAME:-$(id -un)}
-USER_UID=${UID:-$(id -u)}
-USER_GID=${GID:-$(id -g)}
+USER_UID=${USER_UID:-$(id -u)}
+USER_GID=${USER_GID:-$(id -g)}
 
 VPN_GATEWAY_FAIXA_IP="${VPN_GATEWAY_FAIXA_IP:-172.19.0.0/16}"
 VPN_GATEWAY="${VPN_GATEWAY:-172.19.0.2}"
@@ -589,8 +599,8 @@ insert_text_if_not_exists "DATABASE_DUMP_DIR=${DATABASE_DUMP_DIR}" "$PROJECT_ENV
 insert_text_if_not_exists "DATABASE_NAME=${DATABASE_NAME}" "$PROJECT_ENV_PATH_FILE"
 insert_text_if_not_exists "VPN_GATEWAY_FAIXA_IP=${VPN_GATEWAY_FAIXA_IP}" "$PROJECT_ENV_PATH_FILE"
 insert_text_if_not_exists "VPN_GATEWAY=${VPN_GATEWAY}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "GID=${USER_GID}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "UID=${USER_UID}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "USER_GID=${USER_GID}" "$PROJECT_ENV_PATH_FILE"
+insert_text_if_not_exists "USER_UID=${USER_UID}" "$PROJECT_ENV_PATH_FILE"
 insert_text_if_not_exists "USER_NAME=${USER_NAME}" "$PROJECT_ENV_PATH_FILE"
 insert_text_if_not_exists "PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT}" "$PROJECT_ENV_PATH_FILE"
 insert_text_if_not_exists "REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT}" "$PROJECT_ENV_PATH_FILE"
@@ -751,8 +761,8 @@ COMPOSE=$(get_compose_command "$PROJECT_ENV_PATH_FILE" \
     "$DICT_COMPOSES_FILES" \
     "$INIFILE_PATH")
 
-retorno_funcao=$?
-if [ $retorno_funcao -eq 1 ]; then
+_return_func=$?
+if [ $_return_func -eq 1 ]; then
   echo_error "$COMPOSE"
   exit 1
 fi
@@ -1234,18 +1244,18 @@ function service_db_wait() {
   echo "--- Aguardando a base de dados ..."
 
   # Chamar a função para obter o host e a porta correta
-  retorno_funcao=1
+  _return_func=1
 
-  # Loop until para continuar tentando até que retorno_funcao seja igual a 1
-  until [ $retorno_funcao -eq 0 ]; do
+  # Loop until para continuar tentando até que _return_func seja igual a 1
+  until [ $_return_func -eq 0 ]; do
     echo_warning "Tentando conectar ao banco de dados..."
 
     # Executa o comando dentro do contêiner
     psql_output=$($COMPOSE exec -T $SERVICE_DB_NAME bash -c 'source /scripts/utils.sh && get_host_port "db" "5432" "postgres" "postgres"')
-    retorno_funcao=$?
+    _return_func=$?
 
-    # Se a função retornar com sucesso (retorno_funcao igual a 1)
-    if [ $retorno_funcao -eq 0 ]; then
+    # Se a função retornar com sucesso (_return_func igual a 1)
+    if [ $_return_func -eq 0 ]; then
       # Extrai o host e a porta do output
       read host port <<< "$psql_output"
       echo "host: $host, port: $port"
@@ -1282,6 +1292,9 @@ function database_db_scp() {
   fi
 
   service_db_wait
+
+  # > /dev/null: redireciona apenas a saída padrão (stdout) para /dev/null, descartando todas as
+  # saídas normais, mas permitindo que os erros (stderr) ainda sejam exibidos.
 
   echo "$COMPOSE exec $_service_name sh -c \"
     apt-get update > /dev/null && apt-get install -y openssh-client > /dev/null
@@ -1722,8 +1735,6 @@ function main() {
   local all_commands_local=("${specific_commands_local[@]}")
   all_commands_local+=("${COMMANDS_COMUNS[@]}")
 
-  create_pre_push_hook "$COMPOSE" "$SERVICE_WEB_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
-
   error_danger=""
   error_warning=""
 
@@ -1732,6 +1743,8 @@ function main() {
 
   # Verifica o código de saída da função
   if [ $argumento_valido -ne 1 ]; then
+    create_pre_push_hook "$COMPOSE" "$SERVICE_WEB_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
+
     # Processa os comandos recebidos
     process_command "$arg_count" "$service_exists"
   else

@@ -11,8 +11,8 @@ x-app-common:
       - PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE}
       - WORK_DIR=${WORK_DIR}
       - REQUIREMENTS_FILE=${REQUIREMENTS_FILE}
-      - UID=${UID:-0}
-      - GID=${GID:-0}
+      - USER_UID=${USER_UID:-0}
+      - USER_GID=${USER_GID:-0}
       - USER_NAME=${USER_NAME}
   # stdin_open: mantém o fluxo de entrada padrão (stdin) aberto para o contêiner, permitindo que
   # o usuário envie comandos interativamente para o contêiner,
@@ -28,8 +28,8 @@ x-app-common:
       hard: 65536
   environment:
     - WORK_DIR=${WORK_DIR:-opt/app}
-    - UID=${UID}
-    - GID=${GID}
+    - USER_UID=${USER_UID}
+    - USER_GID=${USER_GID}
     - USER_NAME=${USER_NAME}
     - GIT_BRANCH_NAME=${GIT_BRANCH_NAME:-master}
   volumes:

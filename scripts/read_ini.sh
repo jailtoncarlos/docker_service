@@ -23,9 +23,15 @@ function read_ini() {
     local section=$2
     local key=$3
 
-    # Extract the value using grep and sed
-    value=$(sed -nr "/^\[$section\]/ { :l /^$key[ ]*=/ { s/.*=[ ]*//; p; q;}; n; b l;}" $file)
-    echo $value
+    # Primeiro, encontrar a seção correta
+    value=$(sed -nr "/^\[$section\]/,/^\[/{/^$key[ ]*=/ s/.*=[ ]*//p}" "$file")
+    echo "$value"
+#    # Se nenhum valor for encontrado, retorna vazio
+#    if [ -z "$value" ]; then
+#        echo "Chave ou seção não encontrada."
+#    else
+#        echo "$value"
+#    fi
 }
 
 # Example usage

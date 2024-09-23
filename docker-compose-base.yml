@@ -1,6 +1,8 @@
 x-app-common:
   &app-common
 #  image: "${DEV_IMAGE}"
+  env_file:
+    - .env
   build:
     context: .
     dockerfile: ${DOCKERFILE}
@@ -60,6 +62,8 @@ services:
 
   redis:
     image: redis:latest
+    env_file:
+      - .env
     ports:
       - ${REDIS_EXTERNAL_PORT:-6379}:${REDIS_PORT:-6379}
     environment:
@@ -74,13 +78,15 @@ services:
 
   db:
     restart: always
+    env_file:
+      - .env
     build:
       context: .
       dockerfile: dockerfiles/Dockerfile-db
       args:
         - POSTGRES_IMAGE=${POSTGRES_IMAGE}
     ports:
-      - ${DATABASE_PORT:-5432}:5432
+      - ${POSTGRES_EXTERNAL_PORT:-5432}:${DATABASE_PORT:-5432}
     environment:
       POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
@@ -116,6 +122,8 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:latest
+    env_file:
+      - .env
     environment:
       PGADMIN_DEFAULT_EMAIL: "admin@pgadmin.org"
       PGADMIN_DEFAULT_PASSWORD: "admin"

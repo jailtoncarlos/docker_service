@@ -1,5 +1,7 @@
 x-app-common:
   &app-common
+  env_file:
+    - .env
   build:
     context: .
     dockerfile: ${DOCKERFILE}
@@ -32,18 +34,24 @@ x-app-common:
 
 services:
   django:
-    env_file:
-      - .env.sample
 
   redis:
-    env_file:
-      - .env.sample
 
   db:
-    env_file:
-      - .env.sample
 
   pgadmin:
-    env_file:
-      - .env.sample
 
+  node:
+    <<: *app-common
+    command: >
+      bash -c "
+        cd ${WORK_DIR}/frontend
+        npm install && npm run dev
+      "
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

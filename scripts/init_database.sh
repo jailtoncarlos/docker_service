@@ -1,7 +1,5 @@
 #!/bin/bash
 #set -e
-DOCKER_DEV_DIR="docker/dev"
-
 ##############################################################################
 ### DEFINIÇÕES DE VARÍAVEIS GLOBAIS
 ##############################################################################
@@ -14,24 +12,24 @@ POSTGRES_HOST=${DATABASE_HOST:-$POSTGRES_HOST}
 POSTGRES_PORT=${DATABASE_PORT:-$POSTGRES_PORT}
 
 #Define valores padrão para conexão do banco
-POSTGRES_DB=${DATABASE_NAME:-dbdefault}
-POSTGRES_USER=${DATABASE_USER:-postgres}
-POSTGRES_PASSWORD=${DATABASE_PASSWORD:-postgres}
-POSTGRES_HOST=${DATABASE_HOST:-localhost}
-POSTGRES_PORT=${DATABASE_PORT:-5432}
-
+POSTGRES_DB=${POSTGRES_DB:-dbdefault}
+POSTGRES_USER=${POSTGRES_USER:-postgres}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+POSTGRES_HOST=${POSTGRES_HOST:-localhost}
+POSTGRES_PORT=${POSTGRES_PORT:-5432}
 
 export PGPASSWORD=$POSTGRES_PASSWORD
 
 DIR_DUMP=${DATABASE_DUMP_DIR:-/dump}
 
-UTILS_SH="$DOCKER_DEV_DIR/scripts/utils.sh"
+UTILS_SH="utils.sh"
 
 if [ -n "$PG_VERSION" ]; then
   echo "Executando via docker-compose"
   UTILS_SH="/scripts/utils.sh"
   DIR_DUMP='/dump'
 fi
+source "$UTILS_SH"
 
 ZIPDUMP=$(ls $DIR_DUMP/*.{bkp.gz,sql.gz,tar.gz} 2>/dev/null  | head -n 1)
 SQLDUMP=$(ls $DIR_DUMP/*.sql 2>/dev/null)
@@ -41,8 +39,6 @@ echo "DIR_DUMP: $DIR_DUMP, ZIPDUMP: $ZIPDUMP, SQLDUMP: $SQLDUMP"
 ##############################################################################
 ### VALIDAÇÕES DE ARQUIVOS NECESSÁRIOS
 ##############################################################################
-source "$UTILS_SH"
-
 RED_COLOR='\033[0;31m'     # Cor vermelha para erros
 NO_COLOR='\033[0m'         # Cor neutra para resetar as cores no terminal
 
@@ -78,8 +74,6 @@ function get_sqldump_path() {
     return 0
   fi
 
-  echo "999999 $sqldump"
-  exit 99
   # Extrai o nome base do arquivo zipdump (remove o caminho)
   local filename=$(basename "$zipdump")
 
@@ -381,8 +375,6 @@ function restaurar_dump_psql() {
 ##############################################################################
 ### MAIN
 ##############################################################################
-
-echo "88888 $SQLDUMP"
 # SQLDUMP - passagem por referência
 get_sqldump_path "$ZIPDUMP" "$DIR_DUMP" SQLDUMP
 

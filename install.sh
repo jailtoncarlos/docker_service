@@ -1,4 +1,8 @@
 #!/bin/bash
+
+##############################################################################
+### Funções
+##############################################################################
 # Função para verificar e carregar o script de utilitários
 function check_and_load_utils() {
   RED_COLOR='\033[0;31m'     # Cor vermelha para erros
@@ -54,11 +58,37 @@ function configure_path_and_alias() {
     else
         echo_warning "Alias \"sdocker\" já está configurado."
     fi
-    echo_success "Commando \"sdocker\" instalado.
-       Execute-o no diretório raiz do seu projeto!"
+    echo_success "Commando \"sdocker\" instalado."
+    echo_info "Execute o \"sdocker\" no diretório raiz do seu projeto!"
 }
 
-verifica_instalacao() {
+function atualiza_dockercompose_volumes() {
+    local script_dir="$1"
+    local dockercompose_base="$2"
+
+    # Atualiza o path "basedir_script" do volume "- <<basedir_script>>/scripts:/scripts/"
+    # para o diretório onde está o arquivo service.sh.
+    local volume_script_dir="      - ${script_dir}/scripts:/scripts/"
+    if ! grep -q "$volume_script_dir" "$dockercompose_base"; then
+        echo ">>> sed -i \"/:\/scripts\//c\\$volume_script_dir\" $dockercompose_base"
+        sed -i "/:\/scripts\//c\\$volume_script_dir" "$dockercompose_base"
+    else
+      echo_warning "Volume \"$(echo $volume_script_dir | xargs)\" já definido no arquivo \"${dockercompose_base}\"."
+    fi
+
+    # Atualiza o path "basedir_script" do volume "- <<basedir_script>>/scripts/init_database.sh:/docker-entrypoint-initdb.d/init_database.sh"
+    # para o diretório onde está o arquivo service.sh.
+    local volume_init_database="      - ${script_dir}/scripts/init_database.sh:/docker-entrypoint-initdb.d/init_database.sh"
+    if ! grep -q "$volume_init_database" "$dockercompose_base"; then
+        echo ">>> sed -i \"/:\/scripts\//c\\$volume_init_database\" $dockercompose_base"
+        sed -i "/init_database.sh/c\\$volume_init_database" "$dockercompose_base"
+    else
+      echo_warning "Volume \"$(echo $volume_init_database | xargs)\" já definido no arquivo \"${dockercompose_base}\"."
+
+    fi
+}
+
+function verifica_instalacao() {
     # Obter o diretório do script
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     # Obtem o nome do script
@@ -77,15 +107,21 @@ verifica_instalacao() {
 
     return 0  # Retorna 0 se uma das condições não for verdadeira
 }
+##############################################################################
+### Main
+##############################################################################
 
 check_and_load_utils
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-utils_sh="$script_dir/scripts/utils.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+utils_sh="$SCRIPT_DIR/scripts/utils.sh"
 source $utils_sh
 
 _CURRENT_FILE_NAME=$(basename $0)
 
 if [ "$_CURRENT_FILE_NAME" = "install.sh" ]; then
+  inifile_path="${SCRIPT_DIR}/config.ini"
+  dockercompose_base=$(read_ini "$inifile_path" "dockercompose" "python_base" | tr -d '\r')
+  atualiza_dockercompose_volumes "$SCRIPT_DIR" "$dockercompose_base"
   configure_path_and_alias
 fi

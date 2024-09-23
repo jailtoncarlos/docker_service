@@ -515,16 +515,16 @@ verificar_ip_em_uso() {
 }
 
 # Função para encontrar uma sub-rede e IP de gateway disponíveis
+# Rede clase C, prefixo /16
 encontrar_ip_disponivel() {
-    local base_ip="$1"
-    local mask="$2"
-    local octeto=0
-
+    local base_ip="$1"  # Ex: "172.19"
+    local mask="$2"     # Ex: "16"
+    local terceiro_octeto=0
     # Testar uma série de sub-redes começando no base_ip
-    while [ "$octeto" -lt 255 ]; do
+    while [ "$terceiro_octeto" -lt 255 ]; do
         # Construir a sub-rede e o IP do gateway
-        subnet="${base_ip}.${octeto}.0/${mask}"
-        gateway_ip="${base_ip}.${octeto}.1"
+        subnet="${base_ip}.${terceiro_octeto}.0/${mask}"
+        gateway_ip="${base_ip}.${terceiro_octeto}.2"
 
         # Verificar se a sub-rede ou o gateway já estão em uso
         if ! verificar_ip_em_uso "$subnet" && ! verificar_gateway_em_uso "$gateway_ip"; then
@@ -532,12 +532,50 @@ encontrar_ip_disponivel() {
             return 0  # Retornar a sub-rede e o IP do gateway disponíveis
         fi
 
-        # Incrementar o octeto para tentar o próximo intervalo de IP
-        octeto=$((octeto + 1))
+        # Incrementar o segundo octeto para tentar o próximo intervalo de IP
+        terceiro_octeto=$((terceiro_octeto + 1))
     done
 
     echo "Erro: Nenhuma sub-rede ou IP de gateway disponível encontrado."
     return 1
+}
+
+# Função para determinar a sub-rede e o IP do gateway
+determinar_gateway_vpn() {
+    local default_vpn_gateway_faixa_ip="172.19.0.0/16"
+    local default_vpn_gateway_ip="172.19.0.2"
+    local base_ip="172.19"
+    local mask="16"
+
+    # Verificar se o gateway inicial está em uso
+    if verificar_gateway_em_uso "$default_vpn_gateway_ip"; then
+        echo_warning "IP do gateway $default_vpn_gateway_ip já está em uso."
+
+        # Encontrar um novo IP de gateway disponível
+        local resultado=$(encontrar_ip_disponivel "$base_ip" "$mask")
+
+        if [ $? -eq 0 ]; then
+            default_vpn_gateway_faixa_ip=$(echo "$resultado" | cut -d ' ' -f 1)
+            default_vpn_gateway_ip=$(echo "$resultado" | cut -d ' ' -f 2)
+            echo_warning "Nova sub-rede e IP de gateway disponíveis: $default_vpn_gateway_faixa_ip, Gateway: $default_vpn_gateway_ip"
+        else
+            echo_error "Não foi possível encontrar uma sub-rede ou IP de gateway disponível."
+            exit 1
+        fi
+    else
+        echo_info "Sub-rede $default_vpn_gateway_faixa_ip e gateway $default_vpn_gateway_ip estão disponíveis."
+    fi
+
+    # Retornar os valores
+    echo "$default_vpn_gateway_faixa_ip $default_vpn_gateway_ip"
+
+# # Exemplo de uso da função
+  #resultado=$(determinar_gateway_vpn)
+  #vpn_gateway_faixa_ip=$(echo "$resultado" | cut -d ' ' -f 1)
+  #vpn_gateway_ip=$(echo "$resultado" | cut -d ' ' -f 2)
+  #
+  #echo "VPN Gateway Faixa IP: $vpn_gateway_faixa_ip"
+  #echo "VPN Gateway IP: $vpn_gateway_ip"
 }
 
 ##############################################################################
@@ -615,51 +653,64 @@ function read_ini() {
 # Função para verificar o comando de inicialização da aplicação no ambiente de desenvolvimento
 function verificar_comando_inicializacao_ambiente_dev() {
     local root_dir="$1"
+    local mensagem=""
+    local codigo_retorno=1  # Definido como falha por padrão
 
     # Verifica se o arquivo manage.py existe (Django)
     if [[ -f "$root_dir/manage.py" ]]; then
-        echo_warning "Django detectado no diretório: $root_dir"
-        return 0  # Retorna 0 indicando sucesso (Django)
+        mensagem="Django detectado no diretório: $root_dir"
+        codigo_retorno=0
 
     # Verifica se o arquivo index.php existe (PHP)
     elif [[ -f "$root_dir/index.php" ]]; then
-        echo_warning "PHP detectado no diretório: $root_dir"
-        return 0  # Retorna 0 indicando sucesso (PHP)
+        mensagem="PHP detectado no diretório: $root_dir"
+        codigo_retorno=0
 
     # Verifica se o arquivo package.json existe (Node.js)
     elif [[ -f "$root_dir/package.json" ]]; then
-        echo_warning "Node.js detectado no diretório: $root_dir"
-        return 0  # Retorna 0 indicando sucesso (Node.js)
+        mensagem="Node.js detectado no diretório: $root_dir"
+        codigo_retorno=0
 
     # Verifica se o arquivo composer.json existe (PHP com Composer)
     elif [[ -f "$root_dir/composer.json" ]]; then
-        echo_warning "PHP com Composer detectado no diretório: $root_dir"
-        return 0  # Retorna 0 indicando sucesso (PHP com Composer)
+        mensagem="PHP com Composer detectado no diretório: $root_dir"
+        codigo_retorno=0
 
     # Verifica se o arquivo Gemfile existe (Ruby on Rails)
     elif [[ -f "$root_dir/Gemfile" ]]; then
-        echo_warning "Ruby on Rails detectado no diretório: $root_dir"
-        return 0  # Retorna 0 indicando sucesso (Ruby on Rails)
+        mensagem="Ruby on Rails detectado no diretório: $root_dir"
+        codigo_retorno=0
 
     # Verifica se o arquivo config.ru existe (Rack ou Sinatra - Ruby)
     elif [[ -f "$root_dir/config.ru" ]]; then
-        echo_warning "Rack/Sinatra detectado no diretório: $root_dir"
-        return 0  # Retorna 0 indicando sucesso (Rack ou Sinatra)
+        mensagem="Rack/Sinatra detectado no diretório: $root_dir"
+        codigo_retorno=0
 
     else
-        echo_error "Nenhum comando de inicialização detectado no diretório $root_dir."
-        return 1  # Retorna 1 indicando falha (nenhuma aplicação detectada)
+        mensagem="Nenhum comando de inicialização detectado no diretório $root_dir."
+        codigo_retorno=1
     fi
 
-# Exemplo de uso:
-  # root_dir="/caminho/do/diretorio"
-  #if verificar_comando_inicializacao "$root_dir"; then
-  #    echo "Iniciando aplicação detectada..."
-  #    # Comandos de inicialização apropriados com base na aplicação detectada
-  #else
-  #    echo "Nenhuma aplicação detectada."
-  #fi
+    # Retorna a mensagem e o código de retorno
+    echo "$mensagem"
+    return $codigo_retorno
+
+#    # Exemplo de uso:
+     #root_dir="/caminho/do/diretorio"
+     #mensagem=$(verificar_comando_inicializacao_ambiente_dev "$root_dir")
+     #codigo_retorno=$?
+     #
+     #if [ $codigo_retorno -eq 0 ]; then
+     #    echo "Iniciando aplicação detectada..."
+     #    echo "$mensagem"
+     #else
+     #    echo "Erro: Nenhuma aplicação detectada."
+     #    echo "$mensagem"
+     #fi
 }
+
+
+
 
 
 # Função para exibir as opções de imagens e retornar a escolha do usuário
@@ -667,6 +718,7 @@ function escolher_imagem_base() {
     echo >&2 "Selecione uma das opções de imagem base para seu projeto:"
     echo >&2 "1. Imagem base de desenvolvimento Python"
     echo >&2 "2. Imagem base de desenvolvimento Python com Node.js."
+    echo >&2 "3. Vou usar minha própria imagem."
 
     # Solicitar entrada do usuário
     read -p "Digite o número correspondente à sua escolha: " escolha
@@ -678,6 +730,9 @@ function escolher_imagem_base() {
             ;;
         2)
             imagem_base="python_nodejs_dev"
+            ;;
+        3)
+            imagem_base="default"
             ;;
         *)
             echo_warning >&2 "Escolha inválida. Por favor, escolha uma opção válida."
@@ -724,12 +779,11 @@ if [ \$? -ne 0 ]; then
   exit 1
 fi
 EOF
-
     # Torna o arquivo pre-push executável
     chmod +x .git/hooks/pre-push
     echo "Arquivo pre-push criado com sucesso."
-  else
-    echo "Arquivo pre-push já existe."
+#  else
+#    echo "Arquivo pre-push já existe."
   fi
 }
 
@@ -790,4 +844,28 @@ imprime_variaveis_env() {
   #declare -ar:
   #Função: Define a variável como um array somente leitura.
   #Exemplo: declare -ar ARRAY significa que o array ARRAY não pode ser alterado após sua criação.
+}
+
+
+function get_project_file() {
+    local dir_path="$1"
+    local ini_file_path="$2"
+    local section="$3"
+    local key="$4"
+
+    # Lê o valor da chave "default" na seção "envfile"
+    local default_filename=$(read_ini "$ini_file_path" "$section" "default" | tr -d '\r')
+    if [ -z "$default_filename" ]; then
+        default_filename=".env.sample"
+    fi
+    default_filename="${dir_path}/${default_filename}"
+
+    # Lê o valor da chave correspondente ao projeto na seção "envfile"
+    local _project_file=$(read_ini "$ini_file_path" "$section" "$key" | tr -d '\r')
+    if [ -z "$_project_file" ]; then
+        _project_file="$default_filename"
+    fi
+
+    # Retorna o valor da variável _project_file
+    echo "$_project_file"
 }

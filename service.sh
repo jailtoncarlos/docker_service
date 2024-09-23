@@ -1345,7 +1345,7 @@ function database_wait() {
 
   service_db_wait
 
-  # Chamar a função para obter o host e a prota correta
+  # Chamar a função para obter o host e a porta correta
   psql_output=$($COMPOSE exec -T $SERVICE_DB_NAME bash -c 'source /scripts/utils.sh && get_host_port "db" "5432" "postgres" "postgres"')
   read host port <<< $psql_output
   if [ $? -gt 0 ]; then
@@ -1465,11 +1465,11 @@ function command_pre_commit() {
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
-    echo ">>> $COMPOSE exec $_service_name bash -c \"id && git config --global --add safe.directory $WORKDIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
-    $COMPOSE exec "$_service_name" bash -c "id && git config --global --add safe.directory $WORKDIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
+    echo ">>> $COMPOSE exec $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
+    $COMPOSE exec "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
   else
-    echo ">>> $COMPOSE run --rm $_service_name \"id && git config --global --add safe.directory $WORKDIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
-    $COMPOSE run --rm  "$_service_name" bash -c "id && git config --global --add safe.directory $WORKDIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
+    echo ">>> $COMPOSE run --rm $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
+    $COMPOSE run --rm  "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
   fi
 }
 
@@ -1479,14 +1479,14 @@ function command_git() {
   local _option="$@"
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
-  command_pre_commit "$service_name" "$_option"
+#  command_pre_commit "$_service_name" "$_option"
 
   if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
-    echo ">>> $COMPOSE exec $_service_name git $_option"
-    $COMPOSE exec "$_service_name" git "$_option"
+    echo ">>> $COMPOSE exec $_service_name bash -c \"git $_option\""
+    $COMPOSE exec "$_service_name" bash -c "git $_option"
   else
-    echo ">>> $COMPOSE run $_service_name git $_option"
-    $COMPOSE runt "$_service_name" git "$_option"
+    echo ">>> $COMPOSE run --rm  "$_service_name" bash -c \"git $_option\""
+    $COMPOSE run --rm  "$_service_name" bash -c "git $_option"
   fi
 }
 

@@ -95,42 +95,43 @@ function install_command() {
 # Funções específicas para instalar determinados comandos se não estiverem presentes no sistema
 
 # Verifica se o comando 'ps' está instalado, e o instala caso necessário
-install_command_ps() {
+function install_command_ps() {
   if ! command -v ps &>/dev/null; then
     install_command procps
   fi
 }
 
 # Instala o comando 'pv' (Pipeline Viewer) que monitora o progresso de dados em uma pipeline
-install_command_pv() {
+function install_command_pv() {
   install_command pv
 }
 
 # Instala o comando 'pigz' (Parallel Gzip), uma versão paralela do gzip para compressão de dados
-install_command_pigz() {
+function install_command_pigz() {
   install_command pigz
 }
 
 # Instala o comando 'tar' para manipulação de arquivos tar
-install_command_tar() {
+function install_command_tar() {
   install_command tar
 }
 
 # Instala o comando 'file', que identifica o tipo de arquivo
-install_command_file() {
+function install_command_file() {
   install_command file
 }
 
 # Instala o comando 'postgis', uma extensão do PostgreSQL para dados geoespaciais
-install_command_postgis() {
+function install_command_postgis() {
   install_command postgis
 }
 
-install_command_net_tools() {
+function install_command_net_tools() {
   # comando route
   install_command net-tools
 }
-install_command_iptables() {
+
+function install_command_iptables() {
   install_command iptables
 }
 
@@ -341,7 +342,7 @@ function is_script_initdb() {
   # fi
 }
 
-is_first_initialization() {
+function is_first_initialization() {
     # Caminho para o diretório de dados do PostgreSQL
 #    local PG_DATA="/var/lib/postgresql/data"
 
@@ -432,7 +433,7 @@ function get_host_port() {
 ### FUNÇÕES PARA TRATAMENTO DE ROTAS E DOMÍNOS (/etc/hosts)
 ##############################################################################
 # Função para adicionar uma rota
-add_route() {
+function add_route() {
     local vpn_gateway="$1"
     local route_network="$2"
 
@@ -444,7 +445,7 @@ add_route() {
 }
 
 # Função para atualizar o arquivo /etc/hosts
-update_hosts_file() {
+function update_hosts_file() {
 # Adicionar domínio no /etc/hosts
 # O arquivo /etc/hosts é usado para mapear nomes de domínio a endereços IP localmente no sistema.
 # Adiciona uma nova entrada, permitindo que o sistema resolva $domain_name para o endereço IP especificado em $ip.
@@ -462,7 +463,7 @@ update_hosts_file() {
 }
 
 # Função para atualizar o /etc/hosts e verificar a tabela de rotas
-process_hosts_and_routes() {
+function process_hosts_and_routes() {
     local etc_hosts="$1"  # Entrada multilinear com os domínios e IPs
     local vpn_gateway="$2"
     local route_nework="$3"
@@ -499,14 +500,14 @@ process_hosts_and_routes() {
 # O resultado é impresso e pode ser usado no arquivo Docker Compose.
 
 # Função para verificar se um IP específico está em uso
-verificar_gateway_em_uso() {
+function verificar_gateway_em_uso() {
     local gateway_ip="$1"
     docker network inspect --format '{{json .IPAM.Config}}' $(docker network ls -q) | grep -q "\"Gateway\":\"$gateway_ip\"" && return 0
     return 1  # Retorna 1 se o IP do gateway não estiver em uso
 }
 
 # Função para verificar se uma sub-rede está em uso
-verificar_ip_em_uso() {
+function verificar_ip_em_uso() {
     local subnet="$1"
     docker network ls --filter driver=bridge -q | while read -r network_id; do
         docker network inspect "$network_id" --format '{{(index .IPAM.Config 0).Subnet}}' | grep -q "^$subnet$" && return 0
@@ -516,7 +517,7 @@ verificar_ip_em_uso() {
 
 # Função para encontrar uma sub-rede e IP de gateway disponíveis
 # Rede clase C, prefixo /16
-encontrar_ip_disponivel() {
+function encontrar_ip_disponivel() {
     local base_ip="$1"  # Ex: "172.19"
     local mask="$2"     # Ex: "16"
     local terceiro_octeto=0
@@ -541,7 +542,7 @@ encontrar_ip_disponivel() {
 }
 
 # Função para determinar a sub-rede e o IP do gateway
-determinar_gateway_vpn() {
+function determinar_gateway_vpn() {
     local default_vpn_gateway_faixa_ip="172.19.0.0/16"
     local default_vpn_gateway_ip="172.19.0.2"
     local base_ip="172.19"
@@ -639,16 +640,16 @@ function insert_text_if_not_exists() {
 # insert_text_if_not_exists --force "UID=1000" ".env"
 }
 
-# Função para ler o arquivo ini e preencher arrays associativos, passando o array por referência
-function read_ini() {
-    local file=$1
-    local section=$2
-    local key=$3
-
-    # Extract the value using grep and sed
-    value=$(sed -nr "/^\[$section\]/ { :l /^$key[ ]*=/ { s/.*=[ ]*//; p; q;}; n; b l;}" $file)
-    echo $value
-}
+## Função para ler o arquivo ini e preencher arrays associativos, passando o array por referência
+#function read_ini() {
+#    local file=$1
+#    local section=$2
+#    local key=$3
+#
+#    # Extract the value using grep and sed
+#    value=$(sed -nr "/^\[$section\]/ { :l /^$key[ ]*=/ { s/.*=[ ]*//; p; q;}; n; b l;}" $file)
+#    echo $value
+#}
 
 # Função para verificar o comando de inicialização da aplicação no ambiente de desenvolvimento
 function verificar_comando_inicializacao_ambiente_dev() {
@@ -709,10 +710,6 @@ function verificar_comando_inicializacao_ambiente_dev() {
      #fi
 }
 
-
-
-
-
 # Função para exibir as opções de imagens e retornar a escolha do usuário
 function escolher_imagem_base() {
     echo >&2 "Selecione uma das opções de imagem base para seu projeto:"
@@ -753,7 +750,7 @@ function escolher_imagem_base() {
 #echo "Nome base: $nome_base"
 }
 
-create_pre_push_hook() {
+function create_pre_push_hook() {
   local compose_command="$1"
   local service_name="$2"
   local workdir="$3"
@@ -771,7 +768,11 @@ create_pre_push_hook() {
 #  Por padrão, o commit de origem será a referência da branch principal
 # - "--to-ref HEAD" define que o commit final para comparação é o HEAD, ou seja, o commit mais recente na branch atual.
 # - "pre-commit run" executa os hooks de pre-commit definidos no arquivo .pre-commit-config.yaml
-$compose_command exec -T $service_name bash -c "git config --global --add safe.directory ${workdir:-/opt/suap} && pre-commit run --from-ref origin/${gitbranch_name:-master} --to-ref HEAD"
+if [ -d "$workdir" ]; then
+  git config --global --add safe.directory ${workdir:-/opt/suap} && pre-commit run --from-ref origin/${gitbranch_name:-master} --to-ref HEAD
+else
+  $compose_command exec -T $service_name bash -c "git config --global --add safe.directory ${workdir:-/opt/suap} && pre-commit run --from-ref origin/${gitbranch_name:-master} --to-ref HEAD"
+fi
 
 # Verifica se o script foi executado com sucesso
 if [ \$? -ne 0 ]; then
@@ -787,8 +788,7 @@ EOF
   fi
 }
 
-
-imprime_variaveis_env() {
+function imprime_variaveis_env() {
   local env_file_path="$1"
 
   while IFS= read -r line; do
@@ -845,7 +845,6 @@ imprime_variaveis_env() {
   #Função: Define a variável como um array somente leitura.
   #Exemplo: declare -ar ARRAY significa que o array ARRAY não pode ser alterado após sua criação.
 }
-
 
 function get_project_file() {
     local dir_path="$1"

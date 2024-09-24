@@ -5,12 +5,24 @@ PROJECT_ROOT_DIR=$(pwd -P)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Carrega o arquivo externo com as funções
-source "$SCRIPT_DIR/install.sh"
+function check_and_load_utils() {
+  RED_COLOR='\033[0;31m'     # Cor vermelha para erros
+  NO_COLOR='\033[0m'         # Cor neutra para resetar as cores no terminal
 
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  utils_sh="$script_dir/scripts/utils.sh"
+
+  if [ ! -f "$utils_sh" ]; then
+    echo -e "$RED_COLOR DANG: Shell script $utils_sh não existe.\nEsse arquivo possui as funções utilitárias necessárias.\nImpossível continuar!$NO_COLOR"
+    exit 1
+  else
+    source "$utils_sh"
+  fi
+}
 check_and_load_utils
 
 # Carrega o arquivo externo com as funções
+source "$SCRIPT_DIR/install.sh"
 source "$SCRIPT_DIR/scripts/read_ini.sh"
 
 if ! verifica_instalacao; then

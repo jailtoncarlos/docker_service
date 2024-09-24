@@ -431,7 +431,7 @@ function get_host_port() {
 
 
 ##############################################################################
-### FUNÇÕES PARA TRATAMENTO DE ROTAS E DOMÍNOS (/etc/hosts)
+### FUNÇÕES PARA TRATAMENTO DE REDES: PORTAS, ROTAS,  DOMÍNOS(/etc/hosts), ETC
 ##############################################################################
 # Função para adicionar uma rota
 function add_route() {
@@ -487,6 +487,26 @@ function process_hosts_and_routes() {
     # Verifica a tabela de rotas
     route -n
     sleep 2  # Aguarda 2 segundos
+}
+
+check_port() {
+    local _port="$1"
+
+    if netstat -tuln | grep -q ":$_port"; then
+        return 1  # Porta em uso
+    else
+        return 0  # Porta disponível
+    fi
+# # Exemplo de uso da função
+  #_port="8080"
+  #
+  #check_port "$_port"
+  #
+  #if check_port "$_port"; then
+  #    echo "A porta $_port está disponível."
+  #else
+  #    echo "A porta $_port está em uso."
+  #fi
 }
 
 ##############################################################################

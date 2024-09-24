@@ -1,0 +1,73 @@
+======================================================================================================
+### Porque se usar "$_option" com aspas duplas dar erro na execução do comando?
+
+Explicação:
+ ** Comando 1: $COMPOSE up "$_option" "$_service_name" **
+ 
+ Quando você coloca a variável $_option entre aspas duplas, ela é tratada como uma única entidade (uma única string). 
+   Se $_option contiver múltiplos argumentos (por exemplo, "--build --detach"), ao colocar as aspas, 
+   o Bash vai interpretar tudo como um único argumento. Isso é o que provavelmente está causando o erro.
+ 
+ Exemplo:
+ 
+ Se $_option="--build --detach", o comando real seria:
+ bash
+ Copiar código
+ docker compose up "--build --detach" web
+ O que não é válido porque o Bash está tratando "--build --detach" como um único argumento ao invés de dois argumentos separados (--build e --detach).
+
+** Comando 2: $COMPOSE up $_option "$_service_name" **
+
+Sem as aspas ao redor de $_option, o Bash expande o conteúdo de $_option em vários argumentos se houver espaços dentro dessa variável. Ou seja, ele corretamente passa múltiplos argumentos para o comando docker compose.
+
+Exemplo:
+
+Se $_option="--build --detach", o comando real seria:
+bash
+Copiar código
+docker compose up --build --detach web
+O que é correto, pois --build e --detach são passados como argumentos separados.
+
+======================================================================================================
+### Diferença entre $* e $@
+
+ - $*: Combina todos os argumentos em uma única string, separada pelo primeiro caractere
+ do valor da variável IFS (normalmente um espaço).
+ - $@: Trata cada argumento separadamente. Cada argumento é mantido como uma entidade individual.
+
+ Portanto, se deseja manter cada argumento como uma entidade separada e iterar sobre eles,
+ a melhor escolha é usar "$@".
+ Exemplo:
+   local _option=("$@")   Armazena os argumentos restantes como um array
+ 
+    # Iterar sobre as opções
+    for op in "${_option[@]}"; do
+        echo "Opção: $op"
+    done
+
+======================================================================================================
+### Capturar mensagem de erro
+
+ Para capturar e exibir mensagens de erro em um script Shell, você pode redirecionar a saída de
+ erro padrão (stderr) de um comando para uma variável ou diretamente para a saída padrão (tela).
+
+ <<comando>> 2> >(tee /tmp/docker_error.log >&2)
+ Explicação:
+   Redirecionamento de erro (2>): O 2> redireciona a saída de erro (stderr) para outro destino.
+   >(tee /tmp/docker_error.log >&2): O tee escreve a saída tanto no arquivo /tmp/docker_error.log
+   quanto na tela (&2 indica o stderr).
+   Verificação do código de saída: Após a execução do comando, o código de retorno ($?) é verificado.
+   Se for diferente de 0, o comando falhou, e a mensagem de erro será exibida.
+
+ Capturando a mensagem de erro em uma variável e exibindo depois:
+   Se quiser capturar a mensagem de erro em uma variável para processamento posterior, pode fazer assim:
+   Captura a mensagem de erro na variável docker_error
+ message_error=$(<<comando>> 2>&1 >/dev/null)
+ 
+  Verifica o código de retorno do comando
+ if [ $? -ne 0 ]; then
+      echo "O comando docker compose falhou. Veja os detalhes do erro:"
+      echo "$message_error"
+ fi
+======================================================================================================
+###

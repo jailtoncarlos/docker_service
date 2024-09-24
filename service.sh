@@ -1137,9 +1137,9 @@ function container_failed_to_initialize() {
       dict_get_and_convert "$_service_name" "${DICT_SERVICES_DEPENDENCIES[*]}" _name_services
 
       for _nservice in "${_name_services[@]}"; do
-        service_stop "$_nservice" "$_option"
+        service_stop "$_nservice" $_option
       done
-      service_stop "$_service_name" "$_option"
+      service_stop "$_service_name" $_option
       exit 1 # falha ocorrida
   fi
 }
@@ -1181,7 +1181,7 @@ function _service_exec() {
 #  if [ "$(docker container ls | grep "${COMPOSE_PROJECT_NAME}-${_service_name}-1")" ]; then
   if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
     if [ "$ARG_SERVICE" = "pgadmin" ]; then
-      _option=$(echo "$_option" | sed 's/bash/\/bin\/sh/')
+      _option=$(echo $_option | sed 's/bash/\/bin\/sh/')
     fi
     echo ">>> $COMPOSE exec $_service_name $_option"
     $COMPOSE exec "$_service_name" $_option
@@ -1525,7 +1525,7 @@ function command_web_django_debug() {
 
   database_wait
 
-  $COMPOSE run --rm --service-ports "$_service_name" python manage.py runserver_plus 0.0.0.0:${_port} "$_option"
+  $COMPOSE run --rm --service-ports "$_service_name" python manage.py runserver_plus 0.0.0.0:${_port} $_option
 }
 
 function command_pre_commit() {
@@ -1549,7 +1549,7 @@ function command_git() {
   local _option="$@"
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
-#  command_pre_commit "$_service_name" "$_option"
+#  command_pre_commit "$_service_name" $_option
 
   if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
     echo ">>> $COMPOSE exec $_service_name bash -c \"git $_option\""
@@ -1561,8 +1561,9 @@ function command_git() {
 }
 
 function _service_web_up() {
-  local _option="${@:2}"
   local _service_name=$1
+  shift
+  local _option="$*"
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   if ! check_port "$APP_PORT"; then
@@ -1575,8 +1576,8 @@ function _service_web_up() {
   database_wait
 
   echo ">>> $COMPOSE up $_option $_service_name"
-  $COMPOSE up "$_option" "$_service_name"
-  container_failed_to_initialize "$_service_name" "$_option"
+  $COMPOSE up $_option "$_service_name"
+  container_failed_to_initialize "$_service_name" $_option
 }
 
 function _service_all_up() {
@@ -1588,7 +1589,7 @@ function _service_all_up() {
 
   # Itera sobre o array retornado pela função
   for _name_service in "${service_names[@]}"; do
-    _service_up "$_name_service" -d "$_option"
+    _service_up "$_name_service" -d $_option
   done
 }
 
@@ -1602,14 +1603,14 @@ function _service_up() {
     _service_all_up" $_option"
 #    $COMPOSE up $_option
   elif [ "$_service_name" = "$SERVICE_DB_NAME" ]; then
-    _service_db_up "$_service_name" "$_option"
+    _service_db_up "$_service_name" $_option
   elif [ "$_service_name" = "$SERVICE_WEB_NAME" ]; then
-    _service_web_up "$_service_name" "$_option"
+    _service_web_up "$_service_name" $_option
   else
     _nservice=$(get_server_name ${_service_name})
     echo ">>> $COMPOSE up $_option $_nservice"
-    $COMPOSE up "$_option" "$_nservice"
-    container_failed_to_initialize" $_service_name" "$_option"
+    $COMPOSE up $_option "$_nservice"
+    container_failed_to_initialize "$_service_name" $_option
   fi
 }
 
@@ -1627,7 +1628,7 @@ function service_up() {
   for _nservice in "${_name_services[@]}"; do
     _service_up "$_nservice" -d
   done
-  _service_up "$_service_name" "$_option"
+  _service_up "$_service_name" $_option
 }
 
 function remove_all_containers() {
@@ -1662,7 +1663,7 @@ function _service_down() {
     echo ">>> $COMPOSE down --remove-orphans $_option"
     $COMPOSE down --remove-orphans $_option
 
-    remove_all_containers "$_service_name" "$_option"
+    remove_all_containers "$_service_name" $_option
   else
     if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
       echo ">>> docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1"
@@ -1712,18 +1713,18 @@ function service_web_build() {
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   echo ">>> $COMPOSE build --no-cache $SERVICE_WEB_NAME $_option"
-  $COMPOSE build --no-cache "$SERVICE_WEB_NAME" "$_option"
-  container_failed_to_initialize "$_service_name" "$_option"
+  $COMPOSE build --no-cache "$SERVICE_WEB_NAME" $_option
+  container_failed_to_initialize "$_service_name" $_option
 
-  service_up "$SERVICE_WEB_NAME" "$_option"
+  service_up "$SERVICE_WEB_NAME" $_option
 }
 
 function service_deploy() {
   local _option="${@:2}"
   local _service_name=$1
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
-  service_down "$_service_name" -v "$_option"
-  service_web_build "$SERVICE_WEB_NAME" "$_option"
+  service_down "$_service_name" -v $_option
+  service_web_build "$SERVICE_WEB_NAME" $_option
 }
 
 function service_redeploy() {
@@ -1739,7 +1740,7 @@ function service_undeploy() {
   local _service_name=$1
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
   # Opção -v remove todos os volumens atachado
-  service_down "$_service_name" -v "$_option"
+  service_down "$_service_name" -v $_option
 
   echo ">>> rm -rf docker/volumes"
   rm -rf docker/volumes
@@ -1762,7 +1763,7 @@ function command_db_psql() {
   service_db_wait
 
   echo ">>> service_exec $_service_name psql -U $POSTGRES_USER $_option"
-  service_exec "$_service_name" psql -U "$POSTGRES_USER" "$_option"
+  service_exec "$_service_name" psql -U "$POSTGRES_USER" $_option
   #-d $POSTGRES_DB $@
 }
 
@@ -1823,25 +1824,4 @@ if [ "$LOGINFO" = "1" ]; then
 fi
 # Chama a função principal
 main "$@"
-
-
-##############################################################################
-### MANUAL SHELL SCRIPT
-##############################################################################
-
-###################################
-##### Diferença entre $* e $@ #####
-# - $*: Combina todos os argumentos em uma única string, separada pelo primeiro caractere
-# do valor da variável IFS (normalmente um espaço).
-# - $@: Trata cada argumento separadamente. Cada argumento é mantido como uma entidade individual.
-#
-# Portanto, se deseja manter cada argumento como uma entidade separada e iterar sobre eles,
-# a melhor escolha é usar "$@".
-# Exemplo:
-  # local _option=("$@")  # Armazena os argumentos restantes como um array
-  #
-  #  # Iterar sobre as opções
-  #  for op in "${_option[@]}"; do
-  #      echo "Opção: $op"
-  #  done
 

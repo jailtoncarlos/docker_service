@@ -1524,8 +1524,10 @@ function command_web_django_debug() {
   fi
 
   database_wait
-
+  export "APP_PORT=${_port}"
+  echo ">>> $COMPOSE run --rm --service-ports $_service_name python manage.py runserver_plus 0.0.0.0:${_port} $_option"
   $COMPOSE run --rm --service-ports "$_service_name" python manage.py runserver_plus 0.0.0.0:${_port} $_option
+  export "APP_PORT=${APP_PORT}"
 }
 
 function command_pre_commit() {

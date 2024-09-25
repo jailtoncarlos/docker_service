@@ -162,12 +162,13 @@ LOGINFO=1
 
 COMPOSE_PROJECT_NAME=${project_name}
 DEV_IMAGE=
-GIT_BRANCH_MAIN=master
-REQUIREMENTS_FILE=${default_requirements_file}
+PYTHON_BASE_IMAGE=python:3.12-slim-bullseye
+POSTGRES_IMAGE=postgres:16.3
 
-SETTINGS_LOCAL_FILE_SAMPLE=${settings_local_file_sample}
-SETTINGS_LOCAL_FILE=${settings_local_file}
-BASE_DIR=${default_base_dir}
+APP_PORT=8000
+POSTGRES_EXTERNAL_PORT=5432
+REDIS_EXTERNAL_PORT=6379
+PGADMIN_EXTERNAL_PORT=8001
 
 DATABASE_NAME=${project_name}
 DATABASE_USER=postgres
@@ -176,16 +177,16 @@ DATABASE_HOST=db
 DATABASE_PORT=5432
 DATABASE_DUMP_DIR=${project_root_dir}/dump
 
+GIT_BRANCH_MAIN=master
+REQUIREMENTS_FILE=${default_requirements_file}
+
+SETTINGS_LOCAL_FILE_SAMPLE=${settings_local_file_sample}
+SETTINGS_LOCAL_FILE=${settings_local_file}
+BASE_DIR=${default_base_dir}
+
 WORK_DIR=/opt/app
 
 DOCKERFILE=${project_dockerfile}
-PYTHON_BASE_IMAGE=python:3.12-slim-bullseye
-POSTGRES_IMAGE=postgres:16.3
-
-APP_PORT=8000
-POSTGRES_EXTERNAL_PORT=5432
-REDIS_EXTERNAL_PORT=6379
-PGADMIN_EXTERNAL_PORT=8001
 
 USER_NAME=$(id -un)
 USER_UID=$(id -g)
@@ -358,6 +359,7 @@ POSTGRES_PASSWORD=${DATABASE_PASSWORD:-$POSTGRES_PASSWORD}
 POSTGRES_DB=${DATABASE_NAME:-$POSTGRES_DB}
 POSTGRES_HOST=${DATABASE_HOST:-$POSTGRES_HOST}
 POSTGRES_PORT=${DATABASE_PORT:-$POSTGRES_PORT}
+POSTGRES_EXTERNAL_PORT=${POSTGRES_EXTERNAL_PORT:-$POSTGRES_PORT}
 #POSTGRESQL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/"
 POSTGRES_DUMP_DIR=${DATABASE_DUMP_DIR:-dump}
 DIR_DUMP=${POSTGRES_DUMP_DIR:-dump}
@@ -385,7 +387,7 @@ PYTHON_BASE_IMAGE="${PYTHON_BASE_IMAGE:-3.12-slim-bullseye}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:16.3}"
 
 APP_PORT=${APP_PORT:-8000}
-POSTGRES_EXTERNAL_PORT=${POSTGRES_EXTERNAL_PORT:-$POSTGRES_PORT}
+REDIS_PORT=${REDIS_PORT:-6379}
 REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT:-6379}
 PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT:-8001}
 
@@ -1563,11 +1565,11 @@ function command_pre_commit() {
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
-    echo ">>> $COMPOSE exec $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
-    $COMPOSE exec "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
+    echo ">>> $COMPOSE exec $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD\""
+    $COMPOSE exec "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD"
   else
-    echo ">>> $COMPOSE run --rm $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD\""
-    $COMPOSE run --rm  "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/master --to-ref HEAD"
+    echo ">>> $COMPOSE run --rm $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD\""
+    $COMPOSE run --rm  "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD"
   fi
 }
 

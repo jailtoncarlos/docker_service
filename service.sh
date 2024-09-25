@@ -207,7 +207,7 @@ redis:
 "
 
 SERVICES_DEPENDENCIES="
-web:node;redis;db
+django:node;redis;db
 pgadmin:db
 "
 
@@ -428,12 +428,24 @@ mensagem=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
 if [ "$LOGINFO" = "1" ]; then
   echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
   echo_info "$mensagem"
-  echo_info "Arquivo: .env: $PROJECT_ENV_PATH_FILE"
-  echo_info "Arquivo: .env sample: $PROJECT_ENV_FILE_SAMPLE"
-  echo_info "Arquivo: Dockerfile: $PROJECT_DOCKERFILE"
-  echo_info "Arquivo: Dockerfile sample: $PROJECT_DOCKERFILE_SAMPLE"
-  echo_info "Arquivo: docker-compose.yml: $PROJECT_DOCKERCOMPOSE"
-  echo_info "Arquivo: docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
+  if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
+    echo_info "Arquivo: .env: $PROJECT_ENV_PATH_FILE"
+  fi
+  if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
+    echo_info "Arquivo: .env sample: $PROJECT_ENV_FILE_SAMPLE"
+  fi
+  if [ -f "$PROJECT_DOCKERFILE" ]; then
+    echo_info "Arquivo: Dockerfile: $PROJECT_DOCKERFILE"
+  fi
+  if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
+    echo_info "Arquivo: Dockerfile sample: $PROJECT_DOCKERFILE_SAMPLE"
+  fi
+  if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
+    echo_info "Arquivo: docker-compose.yml: $PROJECT_DOCKERCOMPOSE"
+  fi
+  if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
+    echo_info "Arquivo: docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
+  fi
 fi
 
 ##############################################################################
@@ -666,7 +678,7 @@ if [ "$REVISADO" -eq 0 ]; then
     * Variável de configuração de caminho de arquivos:
         - BASE_DIR=${BASE_DIR}
         - DATABASE_DUMP_DIR=${DATABASE_DUMP_DIR}
-        - REQUIREMENTS_FILE=${REQUIREMENTS_FILE} $REQUIREMENTS_FILE_HELP
+        - REQUIREMENTS_FILE=${REQUIREMENTS_FILE} ${REQUIREMENTS_FILE_HELP}
         - WORK_DIR=${WORK_DIR} -- deve apontar para o diretório dentro do container onde está o código fonte da aplicação.
 
     * Variável de nomes de arquivos de configuração do Django:
@@ -709,7 +721,7 @@ if [ "$REVISADO" -eq 0 ]; then
 
     * Variáveis par definição de acesso via VPN. [OPCIONAIS]
         - VPN_WORK_DIR=${VPN_WORK_DIR}  -- diretório onde estão os arquivos do container VPN
-        Variáveis utilizadas para adicionar uma rota no container ${$SERVICE_DB_NAME} para o container VPN
+        Variáveis utilizadas para adicionar uma rota no container ${SERVICE_DB_NAME} para o container VPN
           - VPN_GATEWAY=${VPN_GATEWAY}
           - ROUTE_NETWORK=${ROUTE_NETWORK}
         - DOMAIN_NAME=${DOMAIN_NAME}
@@ -720,9 +732,12 @@ if [ "$REVISADO" -eq 0 ]; then
   "
   echo_warning "Acima segue as principais variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
   echo_info "Antes de prosseguir, revise o conteúdo das variáveis apresentadas acima.
-  Copie a definição \"REVISADO=1\" e cole no arquivo $ENV_PATH_FILE para está mensagem não mais ser exibida."
+  Copie a definição \"REVISADO=1\" e cole no arquivo $ENV_PATH_FILE para está mensagem não mais ser exibida.
+  "
   echo "Tecle [ENTER] para continuar"
   read
+  echo_info "Execute novamente o \"service docker\"."
+  exit 1
 fi
 
 ############ Tratamento para recuperar os arquivos docker-compose ############
@@ -1642,7 +1657,7 @@ function service_up() {
   for _nservice in "${_name_services[@]}"; do
     _service_up "$_nservice" -d
   done
-  _service_up "$_service_name" $_option
+    _service_up "$_service_name" $_option
 }
 
 function remove_all_containers() {

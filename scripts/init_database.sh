@@ -389,12 +389,11 @@ echo "SQLDUMP = $SQLDUMP"
 echo "ZIPDUMP = $ZIPDUMP"
 
 # Chamar a função para obter o host e a prota correta
-read host port <<< $(get_host_port "$POSTGRES_HOST" "$POSTGRES_PORT" "$POSTGRES_USER" "$POSTGRES_PASSWORD")
+read host port <<< $(get_host_port "$POSTGRES_HOST" "$POSTGRES_PORT" "$POSTGRES_USER" "$POSTGRES_DB" "$POSTGRES_PASSWORD")
 if [ $? -gt 0 ]; then
   echo_error "Não foi possível conectar ao banco de dados."
   exit 1
 fi
-
 #host_value="${host#*=}"
 check_db_exists "$POSTGRES_USER" "$POSTGRES_DB" "$host" "$port"
 db_exists=$?

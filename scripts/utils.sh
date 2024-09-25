@@ -571,7 +571,7 @@ function determinar_gateway_vpn() {
 
     # Verificar se o gateway inicial está em uso
     if verificar_gateway_em_uso "$default_vpn_gateway_ip"; then
-        echo_warning "IP do gateway $default_vpn_gateway_ip já está em uso."
+#        echo_warning "IP do gateway $default_vpn_gateway_ip já está em uso."
 
         # Encontrar um novo IP de gateway disponível
         local resultado=$(encontrar_ip_disponivel "$base_ip" "$mask")
@@ -579,13 +579,13 @@ function determinar_gateway_vpn() {
         if [ $? -eq 0 ]; then
             default_vpn_gateway_faixa_ip=$(echo "$resultado" | cut -d ' ' -f 1)
             default_vpn_gateway_ip=$(echo "$resultado" | cut -d ' ' -f 2)
-            echo_warning "Nova sub-rede e IP de gateway disponíveis: $default_vpn_gateway_faixa_ip, Gateway: $default_vpn_gateway_ip"
+#            echo_warning "Nova sub-rede e IP de gateway disponíveis: $default_vpn_gateway_faixa_ip, Gateway: $default_vpn_gateway_ip"
         else
             echo_error "Não foi possível encontrar uma sub-rede ou IP de gateway disponível."
             exit 1
         fi
-    else
-        echo_info "Sub-rede $default_vpn_gateway_faixa_ip e gateway $default_vpn_gateway_ip estão disponíveis."
+#    else
+#        echo_info "Sub-rede $default_vpn_gateway_faixa_ip e gateway $default_vpn_gateway_ip estão disponíveis."
     fi
 
     # Retornar os valores

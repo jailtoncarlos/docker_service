@@ -244,8 +244,9 @@ configura_env() {
   local project_env_file_sample="$1"
   local project_env_path_file="$2"
 
-  # Verifica se o arquivo env não existe e procede com a cópia
-  if [ ! -f "${project_env_path_file}" ]; then
+  # Verifica se o arquivo env NÃO existe e se o env sample EXISTE,
+  # se sim, procede com a cópia do arquivo env sample para env
+  if [ ! -f "${project_env_path_file}" ] && [ -f "${project_env_file_sample}" ]; then
     echo ">>> cp ${project_env_file_sample}  ${project_env_path_file}"
     cp "${project_env_file_sample}" "${project_env_path_file}"
   fi
@@ -884,6 +885,36 @@ if [ ! -f "$SCRIPT_DIR/scripts/init_database.sh" ]; then
   echo_warning "Arquivo $SCRIPT_DIR/scripts/init_database.sh não existe. Sem ele, torna-se impossível realizar dump ou restore do banco.!"
   echo_warning "Tecle [ENTER] para continuar."
   read
+fi
+
+PRE_COMMIT_CONFIG_FILE="${PRE_COMMIT_CONFIG_FILE:-.pre-commit-config.yaml}"
+file_precommit_config="${PROJECT_ROOT_DIR}/${PRE_COMMIT_CONFIG_FILE}"
+if [ ! -f "file_precommit_config" ]; then
+  echo ""
+  echo_error "Arquivo file_precommit_config não existe!"
+  echo_info "O arquivo .pre-commit-config.yaml é a configuração central para o pre-commit, onde você define quais
+  hooks serão executados antes dos commits no Git. Ele automatiza verificações e formatações, garantindo que o código
+  esteja em conformidade com as regras definidas, melhorando a qualidade e consistência do projeto.
+
+  Deseja que este script copie um arquivo pré-configurado para seu projeto?"
+  read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+
+  resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+  if [ "$resposta" = "S" ]; then
+    echo ">>> cp ${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE} ${PROJECT_ROOT_DIR}/${PRE_COMMIT_CONFIG_FILE}"
+    cp "${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE}" "${PROJECT_ROOT_DIR}/${PRE_COMMIT_CONFIG_FILE}"
+    sleep 0.5
+
+    if [ ! -d "${PROJECT_ROOT_DIR}/bin" ]; then
+      echo ">>> mkdir -p ${PROJECT_ROOT_DIR}/bin"
+      mkdir -p "${PROJECT_ROOT_DIR}/bin"
+    fi
+    sleep 0.5
+
+    echo ">>> cp -r ${SCRIPT_DIR}/bin ${PROJECT_ROOT_DIR}/bin"
+    cp -r "${SCRIPT_DIR}/bin" "${PROJECT_ROOT_DIR}/bin"
+    sleep 0.5
+  fi
 fi
 
 ##############################################################################

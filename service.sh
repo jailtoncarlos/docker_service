@@ -109,19 +109,19 @@ function verifica_e_configura_env() {
     # Função para verificar e retornar o caminho correto do arquivo de requirements
     function get_requirements_file() {
         # Verificar se o arquivo requirements.txt existe
-        if [[ -f "$project_root_dir/requirements.txt" ]]; then
+        if [ -f "$project_root_dir/requirements.txt" ]; then
             echo "requirements.txt"
             return
         fi
 
         # Verificar se o arquivo requirements/dev.txt existe
-        if [[ -f "$project_root_dir/requirements/dev.txt" ]]; then
+        if [ -f "$project_root_dir/requirements/dev.txt" ]; then
             echo "requirements/dev.txt"
             return
         fi
 
         # Verificar se o arquivo requirements/development.txt existe
-        if [[ -f "$project_root_dir/requirements/development.txt" ]]; then
+        if [ -f "$project_root_dir/requirements/development.txt" ]; then
             echo "requirements/development.txt"
             return
         fi
@@ -498,7 +498,7 @@ function verifica_e_configura_dockerfile_project() {
     # Se $dev_image não foi definida OU não existe o arquivo Dockerfile, faça
     # gere um modelo Dockerfile sample e faça uma cópia para Dockerfile.
     if [ -z "${dev_image}" ] || [ ! -f "$project_dockerfile" ]; then
-      if { [[ $revisado -eq 0 ]] && [[ ! -f "$project_dockerfile_sample" ]]; } || [[ ! -f "$project_dockerfile" ]]; then
+      if [ "$revisado" -eq 0 ] && [ ! -f "$project_dockerfile_sample" ] || [ ! -f "$project_dockerfile" ]; then
           echo_info "Deseja que este script gere um arquivo modelo (${nome} sample) para seu projeto?"
           read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
           resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
@@ -1337,7 +1337,7 @@ function service_shell() {
     echo_error "Container $_service_name não está em execução!"
   fi
 
-  if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
+  if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
     service_exec "$_service_name" bash $_option
   else
     service_run "$_service_name" bash $_option
@@ -1372,12 +1372,12 @@ function service_stop() {
   dict_get_and_convert "$_service_name" "${DICT_SERVICES_DEPENDENCIES[*]}" _name_services
 
   for _name_service in "${_name_services[@]}"; do
-    if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
+    if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
       echo ">>> docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1"
       docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1
     fi
   done
-    if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
+    if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
       echo ">>> docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1"
       docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1
     fi
@@ -1582,7 +1582,7 @@ function _service_db_up() {
   local _service_name=$1
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
-  if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
+  if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
     echo_warning "O container Postgres já está em execução.
     Execute novamente o comando com o argumento \"logs\" para visualizar o log de execução do Postgres."
   else
@@ -1605,7 +1605,7 @@ function command_web_django_manage() {
 
   database_wait
 
-  if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
+  if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
     service_exec "$_service_name" python manage.py $_option
   else
     service_run "$_service_name" python manage.py $_option
@@ -1641,7 +1641,7 @@ function command_web_django_debug() {
       execucao_liberada=false
     fi
   done
-  if [ "$execucao_liberada" == false ]; then
+  if [ "$execucao_liberada" = false ]; then
     echo_warning "Este comando (${_service_name}) depende dos serviços listados acima para funcionar."
     echo_info "Você pode inicializar todos eles subindo o serviço \"${_service_name}\"
     ou subir somente o serviço \"${SERVICE_DB_NAME}\" (<<service docker>> ${SERVICE_DB_NAME} up)."
@@ -1660,8 +1660,8 @@ function command_pre_commit() {
   shift # Remover o primeiro argumento posicional ($1) -- Remove o nome do serviço da lista de argumentos
   local _option="$@"
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
-
-  if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
+#
+  if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
     echo ">>> $COMPOSE exec $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD\""
     $COMPOSE exec "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD"
   else
@@ -1678,7 +1678,7 @@ function command_git() {
 
 #  command_pre_commit "$_service_name" $_option
 
-  if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
+  if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
     echo ">>> $COMPOSE exec $_service_name bash -c \"git $_option\""
     $COMPOSE exec "$_service_name" bash -c "git $_option"
   else
@@ -1792,7 +1792,7 @@ function _service_down() {
 
     remove_all_containers "$_service_name" $_option
   else
-    if [[ $(docker container ls | grep ${COMPOSE_PROJECT_NAME}-${_service_name}-1) ]]; then
+    if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
       echo ">>> docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1"
       docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1
 

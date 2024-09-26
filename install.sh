@@ -28,9 +28,9 @@ function configure_path_and_alias() {
     # Escolher o arquivo de configuração com base no shell
     local arquivo_conf=""
 
-    if [[ "$shell_user" == "bash" ]]; then
+    if [ "$shell_user" = "bash" ]; then
         arquivo_conf="$HOME/.bashrc"
-    elif [[ "$shell_user" == "zsh" ]]; then
+    elif [ "$shell_user" = "zsh" ]; then
         arquivo_conf="$HOME/.zshrc"
     else
         echo_error "Shell não suportado. Apenas bash e zsh são suportados."

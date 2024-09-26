@@ -82,7 +82,7 @@ function install_command() {
   # Instalação via apt-get (para distribuições Linux que utilizam apt-get)
   elif command -v apt-get &>/dev/null; then
     # Atualiza o apt-get se ainda não foi feito
-    if [[ ! "$apt_get_has_update" == true ]]; then
+    if [ "$apt_get_has_update" != true ]; then
       echo ">>> apt-get update > /dev/null"
       apt-get update -y > /dev/null
       apt_get_has_update=true
@@ -347,7 +347,7 @@ function get_host_port() {
     psql_output=$($psql_command -tc "SELECT 1;" )
     # Remove espaços em branco da variável 'psql_output'
     psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" == "1" ]; then
+    if [ "$psql_output" = "1" ]; then
         echo "$postgres_host $postgres_port"
         return 0
     fi
@@ -356,7 +356,7 @@ function get_host_port() {
     psql_command="psql -v ON_ERROR_STOP=1 --port=$postgres_port --username=$postgres_user"
     psql_output=$($psql_command -tc "SELECT 1;" 2>&1)
     psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" == "1" ]; then
+    if [ "$psql_output" = "1" ]; then
         echo "$postgres_host $postgres_port"
         return 0
     fi
@@ -365,7 +365,7 @@ function get_host_port() {
     psql_command="psql -v ON_ERROR_STOP=1 --host=localhost --port=$postgres_port --username=$postgres_user"
     psql_output=$($psql_command -tc "SELECT 1;"  2>&1)
     psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" == "1" ]; then
+    if [ "$psql_output" = "1" ]; then
         echo "localhost $postgres_port"
         return 0
     fi
@@ -374,7 +374,7 @@ function get_host_port() {
     psql_command="psql -v ON_ERROR_STOP=1 --host=localhost --port=5432 --username=$postgres_user"
     psql_output=$($psql_command -tc "SELECT 1;"  2>&1)
     psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" == "1" ]; then
+    if [ "$psql_output" = "1" ]; then
         echo "localhost 5432"
         return 0
     fi
@@ -383,7 +383,7 @@ function get_host_port() {
     psql_command="psql -v ON_ERROR_STOP=1 --host=$postgres_host --port=5432 --username=$postgres_user"
     psql_output=$($psql_command -tc "SELECT 1;" 2>&1)
     psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" == "1" ]; then
+    if [ "$psql_output" = "1" ]; then
         echo "$postgres_host port=5432"
         return 0
     fi
@@ -392,7 +392,7 @@ function get_host_port() {
     psql_command="psql -v ON_ERROR_STOP=1  --port=5432 --username=$postgres_user"
     psql_output=$($psql_command -tc "SELECT 1;" 2>&1)
     psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" == "1" ]; then
+    if [ "$psql_output" = "1" ]; then
         echo "$postgres_host 5432"
         return 0
     fi
@@ -680,7 +680,7 @@ function insert_text_if_not_exists() {
 
     # Verificar se a chave está definida no arquivo, se não for forçado
     # Força a inserção sem verificação se a chave existe no arquivo $env_file
-    if [ "$force" == "true" ]; then
+    if [ "$force" = "true" ]; then
         # Verifica se o texto está vazio.
         if [ -z "$text" ]; then
           # Adiciona uma quebra de linha
@@ -791,32 +791,32 @@ function verificar_comando_inicializacao_ambiente_dev() {
     local codigo_retorno=1  # Definido como falha por padrão
 
     # Verifica se o arquivo manage.py existe (Django)
-    if [[ -f "$root_dir/manage.py" ]]; then
+    if [ -f "$root_dir/manage.py" ]; then
         mensagem="Django detectado no diretório: $root_dir"
         codigo_retorno=0
 
     # Verifica se o arquivo index.php existe (PHP)
-    elif [[ -f "$root_dir/index.php" ]]; then
+    elif [ -f "$root_dir/index.php" ]; then
         mensagem="PHP detectado no diretório: $root_dir"
         codigo_retorno=0
 
     # Verifica se o arquivo package.json existe (Node.js)
-    elif [[ -f "$root_dir/package.json" ]]; then
+    elif [ -f "$root_dir/package.json" ]; then
         mensagem="Node.js detectado no diretório: $root_dir"
         codigo_retorno=0
 
     # Verifica se o arquivo composer.json existe (PHP com Composer)
-    elif [[ -f "$root_dir/composer.json" ]]; then
+    elif [ -f "$root_dir/composer.json" ]; then
         mensagem="PHP com Composer detectado no diretório: $root_dir"
         codigo_retorno=0
 
     # Verifica se o arquivo Gemfile existe (Ruby on Rails)
-    elif [[ -f "$root_dir/Gemfile" ]]; then
+    elif [ -f "$root_dir/Gemfile" ]; then
         mensagem="Ruby on Rails detectado no diretório: $root_dir"
         codigo_retorno=0
 
     # Verifica se o arquivo config.ru existe (Rack ou Sinatra - Ruby)
-    elif [[ -f "$root_dir/config.ru" ]]; then
+    elif [ -f "$root_dir/config.ru" ]; then
         mensagem="Rack/Sinatra detectado no diretório: $root_dir"
         codigo_retorno=0
 

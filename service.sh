@@ -848,27 +848,29 @@ if [ ! -f "$file_requirements_txt" ]; then
 fi
 
 settings_local_file_sample=$SETTINGS_LOCAL_FILE_SAMPLE
-if [ ! -f "$BASE_DIR/$settings_local_file_sample" ]; then
-  echo ""
-  echo_error "Arquivo settings sample ($BASE_DIR/$settings_local_file_sample) não existe.!"
-  echo_info "Esse arquivo é o modelo de configurações mínimas necessárias para a aplicação funcionar."
-  echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE_SAMPLE\" em \"${PROJECT_ENV_PATH_FILE}\""
-  sair=1
-fi
-
 settings_local_file="${SETTINGS_LOCAL_FILE:-local_settings.py}"
-if [ ! -f "$BASE_DIR/$settings_local_file_sample" ]; then
+
+# Verifica se o arquivo local settings NÃO existe E se settings sample existe, confirmando,
+# copiara o arquivo settings sample para local settings confome nomes definidos
+# nas variáveis de ambiente acima
+if [ ! -f "$BASE_DIR/$settings_local_file" ] && [ -f "$BASE_DIR/$settings_local_file_sample" ]; then
   echo ">>> cp $BASE_DIR/$settings_local_file_sample $BASE_DIR/$settings_local_file"
   cp "$BASE_DIR/$settings_local_file_sample" "$BASE_DIR/$settings_local_file"
   sleep 0.5
-fi
 
-if [ ! -f "$BASE_DIR/$settings_local_file" ]; then
-  echo ""
-  echo_error "Arquivo $BASE_DIR/$settings_local_file não existe.!"
-  echo_info "Esse arquivo possui as configurações mínimas necessárias para a aplicação funcionar."
-  echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
-  sair=1
+  elif [ ! -f "$BASE_DIR/$settings_local_file_sample" ]; then
+    echo ""
+    echo_error "Arquivo settings sample ($BASE_DIR/$settings_local_file_sample) não existe.!"
+    echo_info "Esse arquivo é o modelo de configurações mínimas necessárias para a aplicação funcionar."
+    echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE_SAMPLE\" em \"${PROJECT_ENV_PATH_FILE}\""
+    sair=1
+
+  elif [ ! -f "$BASE_DIR/$settings_local_file" ]; then
+    echo ""
+    echo_error "Arquivo $BASE_DIR/$settings_local_file não existe.!"
+    echo_info "Esse arquivo possui as configurações mínimas necessárias para a aplicação funcionar."
+    echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
+    sair=1
 fi
 
 if [ $sair -eq 1 ]; then

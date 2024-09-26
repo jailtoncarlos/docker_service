@@ -22,7 +22,4 @@ COPY . $WORK_DIR
 # o processo de construção.
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r ${REQUIREMENTS_FILE}
 
-# Instalar os hooks do pre-commit, caso exista o arquivo .pre-commit-config.yaml
-RUN if [ -f .pre-commit-config.yaml ]; then pre-commit install --install-hooks; fi
-
 CMD ["/bin/sh", "-c", "echo 'Starting dev container'; sleep infinity"]

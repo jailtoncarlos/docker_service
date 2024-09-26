@@ -3,4 +3,4 @@ FROM ${POSTGRES_IMAGE}
 
 RUN apt-get update -qq \
     && apt-get install -yqq --no-install-recommends \
-        procps pv pigz tar file postgis net-tools iptables
+        procps pv pigz tar gzip file postgis net-tools iptables

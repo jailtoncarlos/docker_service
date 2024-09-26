@@ -1,6 +1,6 @@
 x-app-common:
   &app-common
-#  image: "${DEV_IMAGE}"
+  image: "${DEV_IMAGE}"
   env_file:
     - .env
   build:
@@ -34,6 +34,7 @@ x-app-common:
     - GIT_BRANCH_NAME=${GIT_BRANCH_NAME:-master}
   volumes:
     - .:${WORK_DIR:-/opt/app}
+    - ./.git:${WORK_DIR:-/opt/app}/.git
     - /home/${USER_NAME}/.ssh/:/home/${USER_NAME}/.ssh/
   networks:
     - net
@@ -92,7 +93,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
       POSTGRES_DB: ${DATABASE_NAME:-${COMPOSE_PROJECT_NAME}}
       PGDATA: /data/postgres
-#    entrypoint: ["/scripts/db_entrypoint.sh"]
+    entrypoint: ["/scripts/db_entrypoint.sh"]
     volumes:
       - /home/jailton/workstation/docker_service/scripts:/scripts/
       - /home/jailton/workstation/docker_service/scripts/init_database.sh:/docker-entrypoint-initdb.d/init_database.sh

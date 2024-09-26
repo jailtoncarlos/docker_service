@@ -1,5 +1,6 @@
 x-app-common:
   &app-common
+  image: "${DEV_IMAGE}"
   env_file:
     - .env
   build:
@@ -29,6 +30,8 @@ x-app-common:
     - USER_GID=${USER_GID}
   volumes:
     - .:${WORK_DIR:-/opt/app}
+    - ./.git:${WORK_DIR:-/opt/app}/.git
+    - /home/${USER_NAME}/.ssh/:/home/${USER_NAME}/.ssh/
   networks:
     - net
 

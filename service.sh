@@ -547,11 +547,6 @@ function verifica_e_configura_dockerfile_project() {
         fi
 
         if [ "$tipo" = "dockerfile" ]; then
-  #        if [ ! -f "$project_dockerfile_sample" ]; then
-  #            echo_error "Arquivo $project_dockerfile_sample não encontrado. Impossível continuar!"
-  #            exit 1
-  #        fi
-
           if [ -f "$project_dockerfile_sample" ] && ! grep -q "${compose_project_name}-dev" "$project_dockerfile_sample"; then
               # Substitui a primeira linha por "DEV_IMAGE"
               # echo "--- Substituindo a 1a linha por \"ARG DEV_IMAGE=${dev_image}\" no arquivo $project_dockerfile_sample"
@@ -586,8 +581,17 @@ function verifica_e_configura_dockerfile_project() {
         if [ "$resposta" = "S" ]; then
           if [ "$tipo" != "dockerfile" ]; then
             dockercompose_base=$(read_ini "$config_inifile" "dockercompose" "python_base" | tr -d '\r')
+
+            project_dockercompose_base_path="$(dirname $project_dockerfile)/${dockercompose_base}"
+
             echo ">>> cp ${script_dir}/${dockercompose_base} $(dirname $project_dockerfile)/${dockercompose_base}"
-            cp "${script_dir}/${dockercompose_base}" "$(dirname $project_dockerfile)/${dockercompose_base}"
+            cp "${script_dir}/${dockercompose_base}" "$project_dockercompose_base_path"
+
+            # Ajustando o path do build dockerfile do container "postgresql" (db)
+            dockerfile_postgresql=$(read_ini "$config_inifile" "dockerfile" "postgresql" | tr -d '\r')
+            echo "--- Substituindo \"dockerfiles/${dockerfile_postgresql}\" por \"${script_dir}/dockerfiles/${dockerfile_postgresql}\" no arquivo \"${project_dockercompose_base_path}\""
+            sed -i "s|dockerfile: dockerfiles/${dockerfile_postgresql}|dockerfile: ${script_dir}/dockerfiles/${dockerfile_postgresql}|" "$project_dockercompose_base_path"
+
           fi
           echo ">>> cp $project_dockerfile_sample $project_dockerfile"
           cp "$project_dockerfile_sample" "$project_dockerfile"
@@ -635,6 +639,7 @@ verifica_e_configura_dockerfile_project "docker-compose" \
     "$REVISADO" \
     "$DEV_IMAGE" \
     "$INIFILE_PATH"
+
 ##############################################################################
 ### INSERINDO VARIÁVEIS COM VALORES PADRÃO NO INICÍO DO ARQUIVO ENV
 ###############################################################################
@@ -1276,11 +1281,11 @@ function service_run() {
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   if [ "$_service_name" = "$SERVICE_WEB_NAME" ]; then
-    echo ">>> $COMPOSE run --rm $_service_name $_option"
-    $COMPOSE run --rm "$_service_name" $_option
+    echo ">>> $COMPOSE run --rm -w /opt/app -u jailton $_service_name $_option"
+    $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME "$_service_name" $_option
   else
     echo ">>> $COMPOSE run $_service_name $_option"
-    $COMPOSE run "$_service_name" $_option
+    $COMPOSE run --rm "$_service_name" $_option
   fi
 }
 
@@ -1483,7 +1488,7 @@ function database_db_dump() {
     apt-get update && apt-get install -y pv gzip &&
     $pg_dump_cmd"
   else
-    $COMPOSE run -e PGPASSWORD="$POSTGRES_PASSWORD" $_service_name sh -c "
+    $COMPOSE run --rm --no-deps -e PGPASSWORD="$POSTGRES_PASSWORD" $_service_name sh -c "
     apt-get update && apt-get install -y pv gzip &&
     $pg_dump_cmd"
   fi
@@ -1623,12 +1628,13 @@ function command_web_django_debug() {
 
   if [ -z "$_port" ]; then
     _port="$APP_PORT"
-    echo_warning "Porta não fornecida, usando valor default $_port."
+    echo_warning "Porta não fornecida, usando valor padrão $_port."
   fi
   if ! check_port "$_port"; then
     echo_error "A porta $_port está em uso. Impossível continuar!"
-    echo_info "Execute o comando novamente passando um número de porta diferente ou
-    encerre o serviço que está usando essa porta."
+    echo_info "Execute o comando novamente passando um número de porta diferente,
+     Exemplo: <<service docker>> web debug 8001
+     Outra alternativa é encerre o serviço que está usando essa porta."
     exit 1
   fi
 
@@ -1650,8 +1656,8 @@ function command_web_django_debug() {
 
   database_wait
   export "APP_PORT=${_port}"
-  echo ">>> $COMPOSE run --rm --service-ports $_service_name python manage.py runserver_plus 0.0.0.0:${_port} $_option"
-  $COMPOSE run --rm --service-ports "$_service_name" python manage.py runserver_plus 0.0.0.0:${_port} $_option
+  echo ">>> $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME --service-ports $_service_name python manage.py runserver_plus 0.0.0.0:${_port} $_option"
+  $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME --service-ports "$_service_name" python manage.py runserver_plus 0.0.0.0:${_port} $_option
   export "APP_PORT=${APP_PORT}"
 }
 
@@ -1665,8 +1671,8 @@ function command_pre_commit() {
     echo ">>> $COMPOSE exec $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD\""
     $COMPOSE exec "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD"
   else
-    echo ">>> $COMPOSE run --rm $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD\""
-    $COMPOSE run --rm  "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD"
+    echo ">>> $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME --no-deps $_service_name bash -c \"id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD\""
+    $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME --no-deps "$_service_name" bash -c "id && git config --global --add safe.directory $WORK_DIR && pre-commit run $_option --from-ref origin/${GIT_BRANCH_MAIN} --to-ref HEAD"
   fi
 }
 
@@ -1682,8 +1688,8 @@ function command_git() {
     echo ">>> $COMPOSE exec $_service_name bash -c \"git $_option\""
     $COMPOSE exec "$_service_name" bash -c "git $_option"
   else
-    echo ">>> $COMPOSE run --rm  "$_service_name" bash -c \"git $_option\""
-    $COMPOSE run --rm  "$_service_name" bash -c "git $_option"
+    echo ">>> $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME --no-deps "$_service_name" bash -c \"git $_option\""
+    $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME --no-deps "$_service_name" bash -c "git $_option"
   fi
 }
 

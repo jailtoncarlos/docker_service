@@ -189,8 +189,8 @@ WORK_DIR=/opt/app
 DOCKERFILE=${project_dockerfile}
 
 USER_NAME=$(id -un)
-USER_UID=$(id -g)
-USER_GID=$(id -u)
+USER_UID=$(id -u)
+USER_GID=$(id -g)
 
 VPN_GATEWAY=${default_vpn_gateway_ip}
 VPN_GATEWAY_FAIXA_IP=${default_vpn_gateway_faixa_ip}
@@ -1122,21 +1122,114 @@ function process_command() {
 ##############################################################################
 ### FUNÇÕES RESPONSÁVEIS POR INSTACIAR OS SERVIÇOS
 ##############################################################################
-function check_option_d() {
-  local _option="$1"
+function docker_build() {
+  local scripty_dir="$1"
+  local inifile_path="$2"
+  local chave_ini="$3"
+  local image_from="$4"
+  local work_dir="$5"
+  local requirements_file="$6"
+  local user_name="$7"
+  local user_uid="$8"
+  local user_gid="$9"
 
-  if [[ $_option =~ "-d" ]]; then
-    return 0  # Verdadeiro (True)
+  local force="false"
+  if [ "${10}" = "--force" ]; then
+      force="true"
+      shift  # Remove o parâmetro --force da lista de argumentos
+  fi
+
+  dockerfile=$(get_project_file "${scripty_dir}" "$inifile_path" "dockerfile" "$chave_ini")
+
+  # Substitui "_" por "-"
+  image="${chave_ini//_/-}"
+
+  if [ "$force" = "true" ] || ! verifica_imagem_docker "$image" "latest" ; then
+    echo ">>>
+    docker build
+      --build-arg WORK_DIR=$work_dir
+      --build-arg REQUIREMENTS_FILE=$requirements_file
+      --build-arg USER_UID=$user_uid
+      --build-arg USER_GID=$user_gid
+      --build-arg USER_NAME=$user_name
+      -t $image
+      -f ${scripty_dir}/dockerfiles/${dockerfile} .
+    "
+
+    docker build \
+      --build-arg WORK_DIR="$work_dir" \
+      --build-arg REQUIREMENTS_FILE="$requirements_file" \
+      --build-arg USER_UID="$user_uid" \
+      --build-arg USER_GID="$user_gid" \
+      --build-arg USER_NAME="$user_name" \
+      -t "$image" \
+      -f "${scripty_dir}/dockerfiles/${dockerfile}" .
   else
-    return 1  # Falso (False)
+      echo_warning "A imagem ${image}:latest já existe localmente.
+      Caso queria reconstruir novamente a imagem, use a opção \"--force\"."
   fi
 }
 
+function build_python_base() {
+  local force="$1"
+  docker_build "$SCRIPT_DIR" \
+    "$INIFILE_PATH" \
+    "python_base" \
+    "${PYTHON_BASE_IMAGE:-python:3.12-slim-bullseye}" \
+    "" \
+    "" \
+    "" \
+    "" \
+    "" \
+    $force
+}
+
+function build_python_base_user() {
+  local force="$1"
+  docker_build "$SCRIPT_DIR" \
+  "$INIFILE_PATH" \
+  "python_base_user" \
+  "${PYTHON_BASE_USER_IMAGE:-python-base:latest}" \
+  "" \
+  "" \
+  $USER_NAME \
+  $USER_UID \
+  $USER_GID \
+  $force
+}
+
+function build_python_nodejs_base() {
+  local force="$1"
+  docker_build "$SCRIPT_DIR" \
+    "$INIFILE_PATH" \
+    "python_nodejs_base" \
+    "${PYTHON_NODEJS_BASE_IMAGE:-python-base-user:latest}" \
+    "" \
+    "" \
+    "" \
+    "" \
+    "" \
+    "$force"
+}
+
+function docker_build_all() {
+  local force="$1"
+  build_python_base "$force"
+  build_python_base_user "$force"
+  build_python_nodejs_base "$force"
+}
+
+#function check_option_d() {
+#  local _option="$1"
+#
+#  if expr "$_option" : '.*-d' > /dev/null; then
+#    return 0  # Verdadeiro (True)
+#  else
+#    return 1  # Falso (False)
+#  fi
+#}
+
 function is_container_running() {
-  # usar:
-  # if ! is_container_running "$_service_name"; then
-  # ...
-  # fi
   local _service_name="$1"
 #  echo ">>> ${FUNCNAME[0]} $_service_name"
 
@@ -1146,6 +1239,10 @@ function is_container_running() {
     return 1
   fi
   return 0
+  # usar:
+  # if ! is_container_running "$_service_name"; then
+  # ...
+  # fi
 }
 
 function container_failed_to_initialize() {
@@ -1742,11 +1839,20 @@ function service_web_build() {
   local _service_name=$1
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
+  # Verifica se $2 é --force e filtra
+  # o argumetno --force só é utilizado na função docker_build_all
+  if [ "$2" = "--force" ]; then
+      _option="${@:3}"  # Pega todos os argumentos a partir de $3, removendo $2
+  else
+      _option="${@:2}"  # Se $2 não for --force, pega todos os argumentos a partir de $2
+  fi
+  docker_build_all $2
+
   echo ">>> $COMPOSE build --no-cache $SERVICE_WEB_NAME $_option"
   $COMPOSE build --no-cache "$SERVICE_WEB_NAME" $_option
   container_failed_to_initialize "$_service_name" $_option
 
-  service_up "$SERVICE_WEB_NAME" $_option
+#  service_up "$SERVICE_WEB_NAME" $_option
 }
 
 function service_deploy() {
@@ -1855,3 +1961,5 @@ fi
 # Chama a função principal
 main "$@"
 
+
+}

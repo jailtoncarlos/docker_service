@@ -1,51 +1,9 @@
-# Primeiro estágio: a partir da imagem python base
-ARG PYTHON_BASE_DEV=python-base:latest
-FROM ${PYTHON_BASE_DEV} AS python-base-dev
-
-ARG WORK_DIR="/opt/app"
-ARG REQUIREMENTS_FILE=requirements.txt
-ARG UID="1000"
-ARG GID="1000"
-ARG USER_NAME=customuser
-
-USER root
-
-# Instala as dependências necessárias
-RUN apt-get update && apt-get install -y --fix-missing openssh-server openssh-client procps sudo \
-    && apt-get -y autoremove && apt-get clean \
-    && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/*
-
-# Cria o grupo e o usuário com base nos UID e GID fornecidos
-RUN groupadd -g "${GID}" customgroup && \
-    useradd -m -u "${UID}" -g "${GID}" -m --no-log-init -s /bin/bash $USER_NAME
-
-# Adicionando usuário ao grupo root
-RUN usermod -G root $USER_NAME
-
-# [Opcional] Adiciona suporte para Sudo.
-RUN echo $USER_NAME ALL=\(ALL\) NOPASSWD:ALL > /etc/sudoers.d/$USER_NAME && \
-    chmod 0440 /etc/sudoers.d/$USER_NAME && \
-    echo "$USER_NAME:mudar@123" | chpasswd
-
-# Se o $USER_NAME == "customuser", gera uma nova chave ssh.
-RUN if [ "$USER_NAME" = "customuser" ]; then \
-        ssh-keygen -t ed25519 -C "Usuário $USER_NAME" -f /home/$USER_NAME/.ssh/id_ed25519_$USER_NAME -N ""; \
-    fi
-
-RUN python -m pip install --upgrade pip
-
-# Instalar o pre-commit (caso não esteja no requirements.txt)
-RUN pip install pre-commit
-
-# 2o estágio: a partir do 1o estágio
-ARG DEV_IMAGE=python-base-dev:latest
+ARG DEV_IMAGE=python-base-user:latest
 FROM ${DEV_IMAGE} AS app-dev
 
-ARG WORK_DIR="/opt/app"
-ARG REQUIREMENTS_FILE=requirements.txt
-ARG UID="1000"
-ARG GID="1000"
-ARG USER_NAME=customuser
+ARG WORK_DIR
+ARG REQUIREMENTS_FILE
+ARG USER_NAME
 
 # Defina o usuário padrão para o container
 USER $USER_NAME

@@ -138,7 +138,6 @@ function install_command_iptables() {
 ##############################################################################
 ### FUÇÕES PARA TRATAMENTO DE ARRAYS
 ##############################################################################
-
 function in_array {
   ARRAY="$2"
   for e in ${ARRAY[*]}; do
@@ -262,31 +261,6 @@ function convert_multiline_to_array() {
   #convert_multiline_to_array "$SERVICES_DEPENDENCIES" DICT_SERVICES_DEPENDENCIES
 }
 
-# Função: dict_get_and_convert
-#
-# Descrição:
-# A função `dict_get_and_convert` busca um valor associado a uma chave específica em um dicionário e, em seguida, converte esse valor em um array.
-# O array resultante é passado por referência para ser utilizado fora da função.
-# A função utiliza outra função auxiliar `dict_get` para localizar a chave e valor no dicionário.
-# Caso a chave não seja encontrada, o array resultante será vazio.
-#
-# Parâmetros:
-# 1. _argkey (string): A chave que está sendo procurada no dicionário.
-# 2. _dict (string): O dicionário no formato de um array onde cada item contém "chave:valor".
-# 3. _result_array (array por referência): O array onde o valor associado à chave será armazenado, após a conversão.
-#
-# Retorno:
-# - Retorna 0 em caso de sucesso, mesmo que a chave não seja encontrada (neste caso, o array resultante estará vazio).
-#
-# Exemplo de uso:
-# # Definir o array que armazenará o resultado
-# declare -a commands_array
-# dict_get_and_convert "db" "${DICT_SERVICES_COMMANDS[*]}" commands_array
-# # Exibir o array resultante
-# for command in "${commands_array[@]}"; do
-#   echo "$command"
-# done
-
 function dict_get_and_convert() {
   local _argkey=$1
   local _dict=$2
@@ -304,7 +278,6 @@ function dict_get_and_convert() {
     return 0
   fi
 }
-
 
 ##############################################################################
 ### FUNÇÕES RELACIONADAS COM INTERAÇÕES COM O POSTGRES
@@ -428,7 +401,6 @@ function get_host_port() {
     echo "Falha ao conectar ao PostgreSQL."
     return 1
 }
-
 
 ##############################################################################
 ### FUNÇÕES PARA TRATAMENTO DE REDES: PORTAS, ROTAS,  DOMÍNOS(/etc/hosts), ETC
@@ -600,37 +572,103 @@ function determinar_gateway_vpn() {
   #echo "VPN Gateway IP: $vpn_gateway_ip"
 }
 
+
+
 ##############################################################################
-### OUTRAS FUNÇÕES
+### FUNÇÕES PARA TRATAR TRATAMENTO DE IMAGENS DOCKER, DOCKERFILE E DOCKER-COMPOSE
 ##############################################################################
 
-function check_command_status_on_error_exit() {
-  # Com mensagem de sucesso:
-  # some_command
-  # check_command_status "Falha ao executar o comando." "Comando executado com sucesso!"
+# Função para verificar se a imagem Docker existe
+verifica_imagem_docker() {
+    local imagem="$1"
+    local tag="${2:-latest}"  # Se nenhuma tag for fornecida, usa "latest"
+
+    # Verifica se a imagem já existe localmente
+    if docker image inspect "${imagem}:${tag}" > /dev/null 2>&1; then
+        return 0  # Retorna 0 se a imagem existir
+    else
+        return 1  # Retorna 1 se a imagem não existir
+    fi
+# # Exemplo de uso da função
+  #IMAGEM="python-nodejs-dev"
+  #TAG="latest"
   #
-  # Sem mensagem de sucesso:
-  # some_command
-  # check_command_status "Falha ao executar o comando."
-
-  local exit_code=$?
-  local error_message="$1"
-  local success_message="$2"
-
-  if [ $exit_code -ne 0 ]; then
-      # Exibe a mensagem de erro e interrompe a execução do script
-      echo_error "$error_message"
-      exit 1
-  else
-      # Se sucesso e a mensagem de sucesso foi fornecida, exibe a mensagem de sucesso
-      if [ -n "$success_message" ]; then
-          echo_success "$success_message"
-      fi
-  fi
+  ## Chamada da função
+  #if verifica_imagem_docker "$IMAGEM" "$TAG"; then
+  #    echo "Processando com a imagem existente..."
+  #else
+  #    echo "Você precisa construir ou baixar a imagem."
+  #fi
 }
 
-# Função para inserir o texto no início do arquivo .env, caso não exista
+# Função para exibir as opções de imagens e retornar a escolha do usuário
+function escolher_imagem_base() {
+    echo >&2 "Selecione uma das opções de imagem base para seu projeto:"
+    echo >&2 "1. Imagem base de desenvolvimento Python"
+    echo >&2 "2. Imagem base de desenvolvimento Python com Node.js."
+    echo >&2 "3. Vou usar minha própria imagem."
+
+    # Solicitar entrada do usuário
+    read -p "Digite o número correspondente à sua escolha: " escolha
+
+    # Definir a imagem base com base na escolha
+    case $escolha in
+        1)
+            imagem_base="python_base_dev"
+            ;;
+        2)
+            imagem_base="python_nodejs_dev"
+            ;;
+        3)
+            imagem_base="default"
+            ;;
+        *)
+            echo_warning >&2 "Escolha inválida. Por favor, escolha uma opção válida."
+            escolher_imagem_base  # Chama a função novamente em caso de escolha inválida
+            return
+            ;;
+    esac
+
+    # Retorna a imagem base selecionada
+    echo "$imagem_base"
+
+# Exemplo de uso
+#resultado=$(escolher_imagem_base)
+#imagem_base=$(echo $resultado | awk '{print $1}')
+#nome_base=$(echo $resultado | awk '{print $2}')
+#
+#echo "Imagem selecionada: $imagem_base"
+#echo "Nome base: $nome_base"
+}
+
+function get_project_file() {
+    local dir_path="$1"
+    local ini_file_path="$2"
+    local section="$3"
+    local key="$4"
+
+    # Lê o valor da chave "default" na seção "$section"
+    local default_filename=$(read_ini "$ini_file_path" "$section" "default" | tr -d '\r')
+    if [ -z "$default_filename" ]; then
+        default_filename=".env.sample"
+    fi
+    default_filename="${dir_path}/${default_filename}"
+
+    # Lê o valor da chave correspondente ao projeto na seção "envfile"
+    local _project_file=$(read_ini "$ini_file_path" "$section" "$key" | tr -d '\r')
+    if [ -z "$_project_file" ]; then
+        _project_file="$default_filename"
+    fi
+
+    # Retorna o valor da variável _project_file
+    echo "$_project_file"
+}
+
+##############################################################################
+### TRATAMENTOS VARIÁVEIS ARQUIVO .ENV
+##############################################################################
 function insert_text_if_not_exists() {
+  # Função para inserir o texto no início do arquivo .env, caso não exista
     local force="false"
     if [ "$1" = "--force" ]; then
         force="true"
@@ -661,16 +699,90 @@ function insert_text_if_not_exists() {
 # insert_text_if_not_exists --force "UID=1000" ".env"
 }
 
-## Função para ler o arquivo ini e preencher arrays associativos, passando o array por referência
-#function read_ini() {
-#    local file=$1
-#    local section=$2
-#    local key=$3
-#
-#    # Extract the value using grep and sed
-#    value=$(sed -nr "/^\[$section\]/ { :l /^$key[ ]*=/ { s/.*=[ ]*//; p; q;}; n; b l;}" $file)
-#    echo $value
-#}
+function imprime_variaveis_env() {
+  local env_file_path="$1"
+
+  while IFS= read -r line; do
+    # Ignora linhas em branco ou comentários
+    if [ -n "$line" ] && expr "$line" : '#.*' > /dev/null; then
+      # Extrai o nome da variável e o valor, com base no formato "chave=valor"
+      var_name=$(echo "$line" | cut -d'=' -f1)
+      var_value=$(echo "$line" | cut -d'=' -f2-)
+
+      # Verifica se o nome da variável é válido
+      if [[ "$var_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+          echo "$var_name=$var_value"
+      else
+        # Se o nome da variável for inválido, apenas exibe a linha lida
+         echo "$var_name"
+      fi
+    fi
+  done <"$env_file_path"
+
+# ver apenas as variáveis definidas no próprio script,
+#set
+
+# ver todas as variáveis, incluindo as variáveis locais e as de ambiente no script,
+#declare -p
+  # declare -x:
+  #Função: Exporta a variável, tornando-a disponível para processos filhos.
+  #Exemplo: declare -x VAR="value" faz com que VAR seja visível para qualquer processo que o script iniciar.
+  #
+  #declare -i:
+  #Função: Faz com que a variável seja tratada como um inteiro (número).
+  #Exemplo: declare -i NUM=10 significa que NUM só aceitará valores inteiros. Se você tentar atribuir um valor não numérico, ele será interpretado como zero.
+  #
+  #declare --:
+  #Função: Usado para marcar o fim das opções, útil quando uma variável pode começar com um -. Isso impede que o Bash interprete o valor da variável como uma opção de comando.
+  #Exemplo: declare -- VAR="value" assegura que "VAR" não será tratado como uma opção.
+  #
+  #declare -r:
+  #Função: Torna a variável somente leitura. Não pode ser alterada após sua atribuição.
+  #Exemplo: declare -r VAR="value" significa que você não pode modificar VAR posteriormente.
+  #
+  #declare -ir:
+  #Função: Combina as opções -i e -r, tornando a variável um número inteiro e somente leitura.
+  #Exemplo: declare -ir NUM=100 significa que NUM é um inteiro e não pode ser modificado.
+  #
+  #declare -a:
+  #Função: Define a variável como um array indexado numericamente.
+  #Exemplo: declare -a ARRAY define ARRAY como um array, permitindo atribuir e acessar valores como ARRAY[0], ARRAY[1], etc.
+  #
+  #declare -A:
+  #Função: Define a variável como um array associativo (ou hash), onde as chaves podem ser strings.
+  #Exemplo: declare -A HASH permite que você use chaves do tipo string, como HASH["key"]="value".
+  #
+  #declare -ar:
+  #Função: Define a variável como um array somente leitura.
+  #Exemplo: declare -ar ARRAY significa que o array ARRAY não pode ser alterado após sua criação.
+}
+##############################################################################
+### OUTRAS FUNÇÕES
+##############################################################################
+function check_command_status_on_error_exit() {
+  # Com mensagem de sucesso:
+  # some_command
+  # check_command_status "Falha ao executar o comando." "Comando executado com sucesso!"
+  #
+  # Sem mensagem de sucesso:
+  # some_command
+  # check_command_status "Falha ao executar o comando."
+
+  local exit_code=$?
+  local error_message="$1"
+  local success_message="$2"
+
+  if [ $exit_code -ne 0 ]; then
+      # Exibe a mensagem de erro e interrompe a execução do script
+      echo_error "$error_message"
+      exit 1
+  else
+      # Se sucesso e a mensagem de sucesso foi fornecida, exibe a mensagem de sucesso
+      if [ -n "$success_message" ]; then
+          echo_success "$success_message"
+      fi
+  fi
+}
 
 # Função para verificar o comando de inicialização da aplicação no ambiente de desenvolvimento
 function verificar_comando_inicializacao_ambiente_dev() {
@@ -731,46 +843,6 @@ function verificar_comando_inicializacao_ambiente_dev() {
      #fi
 }
 
-# Função para exibir as opções de imagens e retornar a escolha do usuário
-function escolher_imagem_base() {
-    echo >&2 "Selecione uma das opções de imagem base para seu projeto:"
-    echo >&2 "1. Imagem base de desenvolvimento Python"
-    echo >&2 "2. Imagem base de desenvolvimento Python com Node.js."
-    echo >&2 "3. Vou usar minha própria imagem."
-
-    # Solicitar entrada do usuário
-    read -p "Digite o número correspondente à sua escolha: " escolha
-
-    # Definir a imagem base com base na escolha
-    case $escolha in
-        1)
-            imagem_base="python_base_dev"
-            ;;
-        2)
-            imagem_base="python_nodejs_dev"
-            ;;
-        3)
-            imagem_base="default"
-            ;;
-        *)
-            echo_warning >&2 "Escolha inválida. Por favor, escolha uma opção válida."
-            escolher_imagem_base  # Chama a função novamente em caso de escolha inválida
-            return
-            ;;
-    esac
-
-    # Retorna a imagem base selecionada
-    echo "$imagem_base"
-
-# Exemplo de uso
-#resultado=$(escolher_imagem_base)
-#imagem_base=$(echo $resultado | awk '{print $1}')
-#nome_base=$(echo $resultado | awk '{print $2}')
-#
-#echo "Imagem selecionada: $imagem_base"
-#echo "Nome base: $nome_base"
-}
-
 function create_pre_push_hook() {
   local compose_command="$1"
   local service_name="$2"
@@ -809,83 +881,5 @@ EOF
   fi
 }
 
-function imprime_variaveis_env() {
-  local env_file_path="$1"
 
-  while IFS= read -r line; do
-    # Ignora linhas em branco ou comentários
-    if [[ -n "$line" && "$line" != \#* ]]; then
-      # Extrai o nome da variável e o valor, com base no formato "chave=valor"
-      var_name=$(echo "$line" | cut -d'=' -f1)
-      var_value=$(echo "$line" | cut -d'=' -f2-)
 
-      # Verifica se o nome da variável é válido
-      if [[ "$var_name" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
-          echo "$var_name=$var_value"
-      else
-        # Se o nome da variável for inválido, apenas exibe a linha lida
-         echo "$var_name"
-      fi
-    fi
-  done <"$env_file_path"
-
-# ver apenas as variáveis definidas no próprio script,
-#set
-
-# ver todas as variáveis, incluindo as variáveis locais e as de ambiente no script,
-#declare -p
-  # declare -x:
-  #Função: Exporta a variável, tornando-a disponível para processos filhos.
-  #Exemplo: declare -x VAR="value" faz com que VAR seja visível para qualquer processo que o script iniciar.
-  #
-  #declare -i:
-  #Função: Faz com que a variável seja tratada como um inteiro (número).
-  #Exemplo: declare -i NUM=10 significa que NUM só aceitará valores inteiros. Se você tentar atribuir um valor não numérico, ele será interpretado como zero.
-  #
-  #declare --:
-  #Função: Usado para marcar o fim das opções, útil quando uma variável pode começar com um -. Isso impede que o Bash interprete o valor da variável como uma opção de comando.
-  #Exemplo: declare -- VAR="value" assegura que "VAR" não será tratado como uma opção.
-  #
-  #declare -r:
-  #Função: Torna a variável somente leitura. Não pode ser alterada após sua atribuição.
-  #Exemplo: declare -r VAR="value" significa que você não pode modificar VAR posteriormente.
-  #
-  #declare -ir:
-  #Função: Combina as opções -i e -r, tornando a variável um número inteiro e somente leitura.
-  #Exemplo: declare -ir NUM=100 significa que NUM é um inteiro e não pode ser modificado.
-  #
-  #declare -a:
-  #Função: Define a variável como um array indexado numericamente.
-  #Exemplo: declare -a ARRAY define ARRAY como um array, permitindo atribuir e acessar valores como ARRAY[0], ARRAY[1], etc.
-  #
-  #declare -A:
-  #Função: Define a variável como um array associativo (ou hash), onde as chaves podem ser strings.
-  #Exemplo: declare -A HASH permite que você use chaves do tipo string, como HASH["key"]="value".
-  #
-  #declare -ar:
-  #Função: Define a variável como um array somente leitura.
-  #Exemplo: declare -ar ARRAY significa que o array ARRAY não pode ser alterado após sua criação.
-}
-
-function get_project_file() {
-    local dir_path="$1"
-    local ini_file_path="$2"
-    local section="$3"
-    local key="$4"
-
-    # Lê o valor da chave "default" na seção "envfile"
-    local default_filename=$(read_ini "$ini_file_path" "$section" "default" | tr -d '\r')
-    if [ -z "$default_filename" ]; then
-        default_filename=".env.sample"
-    fi
-    default_filename="${dir_path}/${default_filename}"
-
-    # Lê o valor da chave correspondente ao projeto na seção "envfile"
-    local _project_file=$(read_ini "$ini_file_path" "$section" "$key" | tr -d '\r')
-    if [ -z "$_project_file" ]; then
-        _project_file="$default_filename"
-    fi
-
-    # Retorna o valor da variável _project_file
-    echo "$_project_file"
-}

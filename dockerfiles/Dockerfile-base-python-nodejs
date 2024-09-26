@@ -1,5 +1,5 @@
 # terceiro estágio: começa da imagem base anterior e adiciona Node.js
-ARG PYTHON_NODEJS_BASE_IMAGE=python-base:latest
+ARG PYTHON_NODEJS_BASE_IMAGE=python-base-user:latest
 FROM ${PYTHON_NODEJS_BASE_IMAGE} AS python-nodejs-base
 
 # Instalar Node.js e Yarn de forma mais simples

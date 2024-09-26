@@ -888,8 +888,8 @@ if [ ! -f "$SCRIPT_DIR/scripts/init_database.sh" ]; then
 fi
 
 PRE_COMMIT_CONFIG_FILE="${PRE_COMMIT_CONFIG_FILE:-.pre-commit-config.yaml}"
-file_precommit_config="${PROJECT_ROOT_DIR}/${PRE_COMMIT_CONFIG_FILE}"
-if [ ! -f "file_precommit_config" ]; then
+file_precommit_config="${PROJECT_DEV_DIR}/${PRE_COMMIT_CONFIG_FILE}"
+if [ ! -f "$file_precommit_config" ]; then
   echo ""
   echo_error "Arquivo file_precommit_config não existe!"
   echo_info "O arquivo .pre-commit-config.yaml é a configuração central para o pre-commit, onde você define quais
@@ -901,18 +901,18 @@ if [ ! -f "file_precommit_config" ]; then
 
   resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
   if [ "$resposta" = "S" ]; then
-    echo ">>> cp ${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE} ${PROJECT_ROOT_DIR}/${PRE_COMMIT_CONFIG_FILE}"
-    cp "${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE}" "${PROJECT_ROOT_DIR}/${PRE_COMMIT_CONFIG_FILE}"
+    echo ">>> cp ${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE} $file_precommit_config"
+    cp "${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE}" "$file_precommit_config"
     sleep 0.5
 
-    if [ ! -d "${PROJECT_ROOT_DIR}/bin" ]; then
-      echo ">>> mkdir -p ${PROJECT_ROOT_DIR}/bin"
-      mkdir -p "${PROJECT_ROOT_DIR}/bin"
+    if [ ! -d "${PROJECT_ROOT_DIR}/pre-commit-bin" ]; then
+      echo ">>> mkdir -p ${PROJECT_ROOT_DIR}/pre-commit-bin"
+      mkdir -p "${PROJECT_ROOT_DIR}/pre-commit-bin"
     fi
     sleep 0.5
 
-    echo ">>> cp -r ${SCRIPT_DIR}/bin ${PROJECT_ROOT_DIR}/bin"
-    cp -r "${SCRIPT_DIR}/bin" "${PROJECT_ROOT_DIR}/bin"
+    echo ">>> cp -r ${SCRIPT_DIR}/pre-commit-bin ${PROJECT_ROOT_DIR}/pre-commit-bin"
+    cp -r "${SCRIPT_DIR}/pre-commit-bin" "${PROJECT_ROOT_DIR}/pre-commit-bin"
     sleep 0.5
   fi
 fi
@@ -1984,7 +1984,7 @@ function main() {
 
   # Verifica o código de saída da função
   if [ $argumento_valido -ne 1 ]; then
-    create_pre_push_hook "$COMPOSE" "$COMPOSE_PROJECT_NAME" "$SERVICE_WEB_NAME" "$USER_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
+    create_pre_push_hook "$COMPOSE_PROJECT_NAME" "$COMPOSE" "$SERVICE_WEB_NAME" "$USER_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
 
     # Processa os comandos recebidos
     process_command "$arg_count" "$service_exists"

@@ -25,14 +25,14 @@ repos:
   hooks:
     - id: debug-statements
       name: Check project for debug imports
-      entry: pyton pre-commit-bin/debug-statements.py
+      entry: python pre-commit-bin/debug-statements.py
       types:
         - python
       pass_filenames: true
       language: system
     - id: prints
       name: Check project for prints in views, forms, models and tasks
-      entry: pyton pre-commit-bin/print-statements.py
+      entry: python pre-commit-bin/print-statements.py
       types:
         - python
       pass_filenames: true
@@ -40,14 +40,14 @@ repos:
     - id: black
       name: The Python code formatter
       language: system
-      entry: sh -c 'pyton pre-commit-bin/black.py'
+      entry: sh -c 'python pre-commit-bin/black.py'
       types:
         - python
       pass_filenames: false
     - id: pylint
       name: The Python code linter
       language: system
-      entry: sh -c 'pyton pre-commit-bin/pylint.py'
+      entry: sh -c 'python pre-commit-bin/pylint.py'
       types:
         - python
       pass_filenames: false

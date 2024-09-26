@@ -1849,6 +1849,20 @@ function service_down() {
   local _service_name=$1
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
+  # Prevenção contra remoção acidental de volumes
+  echo "000000 $_option"
+  if echo "$_option" | grep -qE "(--volumes|-v)"; then
+    echo_warning "Cuidado: O uso de --volumes ou -v pode remover os volumes do banco de dados!"
+    echo_info "Tem certeza de que deseja remover os volumes? Isso pode apagar o banco de dados."
+    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+
+    if [ "$resposta" != "S" ]; then
+      echo_warning "Operação cancelada pelo usuário."
+      return 1  # Interrompe a função para evitar remoção acidental
+    fi
+  fi
+
   declare -a _name_services
   dict_get_and_convert "$_service_name" "${DICT_SERVICES_DEPENDENCIES[*]}" _name_services
 

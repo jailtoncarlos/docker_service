@@ -844,10 +844,12 @@ function verificar_comando_inicializacao_ambiente_dev() {
 }
 
 function create_pre_push_hook() {
-  local compose_command="$1"
-  local service_name="$2"
-  local workdir="$3"
-  local gitbranch_name="$4"
+  local compose_project_name="$1"
+  local compose_command="$2"
+  local service_name="$3"
+  local username="$4"
+  local workdir="$5"
+  local gitbranch_name="$6"
 
   # Verifica se o arquivo pre-push já existe
   if [ ! -f .git/hooks/pre-push ]; then
@@ -855,7 +857,7 @@ function create_pre_push_hook() {
     cat <<EOF > .git/hooks/pre-push
 #!/bin/sh
 
-# Execute o comando pre-commit customizado
+# Executa o comando pre-commit customizado
 # - "git config --global --add safe.directory" permite que o diretório especificado seja marcado como seguro, permitindo que o Git execute operações nesse diretório.
 # - "--from-ref origin/\${GIT_BRANCH_MAIN:-master}" especifica o commit de origem para a comparação.
 #  Por padrão, o commit de origem será a referência da branch principal
@@ -863,8 +865,10 @@ function create_pre_push_hook() {
 # - "pre-commit run" executa os hooks de pre-commit definidos no arquivo .pre-commit-config.yaml
 if [ -d "$workdir" ]; then
   git config --global --add safe.directory ${workdir:-/opt/suap} && pre-commit run --from-ref origin/${gitbranch_name:-master} --to-ref HEAD
-else
+elif docker container ls | grep -q "${compose_project_name}-${service_name}-1"; then
   $compose_command exec -T $service_name bash -c "git config --global --add safe.directory ${workdir:-/opt/suap} && pre-commit run --from-ref origin/${gitbranch_name:-master} --to-ref HEAD"
+else
+  $compose_command run --rm -w $workdir -u $username --no-deps "$service_name" bash -c "git $_option"
 fi
 
 # Verifica se o script foi executado com sucesso

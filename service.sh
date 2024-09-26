@@ -1953,7 +1953,7 @@ function main() {
 
   # Verifica o código de saída da função
   if [ $argumento_valido -ne 1 ]; then
-    create_pre_push_hook "$COMPOSE" "$SERVICE_WEB_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
+    create_pre_push_hook "$COMPOSE" "$COMPOSE_PROJECT_NAME" "$SERVICE_WEB_NAME" "$USER_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
 
     # Processa os comandos recebidos
     process_command "$arg_count" "$service_exists"

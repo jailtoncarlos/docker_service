@@ -5,6 +5,11 @@ ARG WORK_DIR
 ARG REQUIREMENTS_FILE
 ARG USER_NAME
 
+# Persistir as variáveis como ambiente no runtime
+ENV WORK_DIR=${WORK_DIR}
+ENV REQUIREMENTS_FILE=${REQUIREMENTS_FILE}
+ENV USER_NAME=${USER_NAME}
+
 # Defina o usuário padrão para o container
 USER $USER_NAME
 

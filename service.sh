@@ -912,7 +912,7 @@ if [ ! -f "$file_precommit_config" ]; then
     sleep 0.5
 
     echo ">>> cp -r ${SCRIPT_DIR}/pre-commit-bin ${PROJECT_ROOT_DIR}/pre-commit-bin"
-    cp -r "${SCRIPT_DIR}/pre-commit-bin" "${PROJECT_ROOT_DIR}/pre-commit-bin"
+    cp -r "${SCRIPT_DIR}/pre-commit-bin" "${PROJECT_ROOT_DIR}"
     sleep 0.5
   fi
 fi

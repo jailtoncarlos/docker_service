@@ -1,0 +1,68 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+default_language_version:
+  # default language version for each language
+  python: python3
+fail_fast: true
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v3.2.0
+  hooks:
+  - id: end-of-file-fixer
+  - id: check-json
+  - id: check-merge-conflict
+  - id: check-yaml
+  - id: check-added-large-files
+  - id: pretty-format-json
+    args: [--autofix,
+           --no-ensure-ascii]
+- repo: https://github.com/asottile/pyupgrade
+  rev: v2.38.2
+  hooks:
+  - id: pyupgrade
+    args: [--py37-plus]
+- repo: local
+  hooks:
+    - id: debug-statements
+      name: Check project for debug imports
+      entry: python bin/debug-statements.py
+      types:
+        - python
+      pass_filenames: true
+      language: system
+    - id: prints
+      name: Check project for prints in views, forms, models and tasks
+      entry: python bin/print-statements.py
+      types:
+        - python
+      pass_filenames: true
+      language: system
+    - id: black
+      name: The Python code formatter
+      language: system
+      entry: sh -c 'python bin/black.py'
+      types:
+        - python
+      pass_filenames: false
+    - id: pylint
+      name: The Python code linter
+      language: system
+      entry: sh -c 'python bin/pylint.py'
+      types:
+        - python
+      pass_filenames: false
+    - id: django-check
+      name: Check django project for potential problems
+      entry: sh -c 'python manage.py check'
+      types:
+        - python
+      pass_filenames: false
+      language: system
+    - id: django-check-migrations
+      name: Check django project for missing migrations.
+      entry: sh -c 'python manage.py makemigrations --dry-run --noinput --check'
+      files: models
+      types:
+        - python
+      pass_filenames: false
+      language: system

@@ -31,7 +31,7 @@ if ! verifica_instalacao; then
 fi
 
 if [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ]; then
-  echo_success "Configurações iniciais do spript definidas com sucesso."
+  echo_success "Configurações iniciais do script definidas com sucesso."
   echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto."
   exit 1
 else

@@ -1,0 +1,3 @@
+[submodule "docker-java-base-web-app"]
+	path = docker-java-base-web-app
+	url = git@github.com:jailtoncarlos/docker-java-base-web-app.git

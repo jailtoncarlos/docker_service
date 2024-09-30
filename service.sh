@@ -1678,12 +1678,13 @@ function command_web_django_debug() {
     _return_func=$?
     if [ "$_return_func" -eq 1 ]; then
       execucao_liberada=false
+      echo_info "Caso queira inicializar o serviço \"${_sname}\", execute \"<<service docker>> $_sname up -d\"."
     fi
   done
   if [ "$execucao_liberada" = false ]; then
     echo_warning "Este comando (${_service_name}) depende dos serviços listados acima para funcionar."
-    echo_info "Você pode inicializar todos eles subindo o serviço \"${_service_name}\"
-    ou subir somente o serviço \"${SERVICE_DB_NAME}\" (<<service docker>> ${SERVICE_DB_NAME} up)."
+    echo_info "Você pode inicializar todos eles subindo o serviço \"${_service_name}\" (\"<<service docker>> ${_service_name} up\") e
+    executando \"<<service docker>> ${_service_name} debug <<port_number>>\" em outro terminal."
     exit 99
   fi
 
@@ -1850,8 +1851,7 @@ function service_down() {
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   # Prevenção contra remoção acidental de volumes
-  echo "000000 $_option"
-  if echo "$_option" | grep -qE "(--volumes|-v)"; then
+    if echo "$_option" | grep -qE "(--volumes|-v)"; then
     echo_warning "Cuidado: O uso de --volumes ou -v pode remover os volumes do banco de dados!"
     echo_info "Tem certeza de que deseja remover os volumes? Isso pode apagar o banco de dados."
     read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta

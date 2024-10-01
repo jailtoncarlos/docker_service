@@ -400,6 +400,13 @@ function get_host_port() {
     # Se todas as tentativas falharem
     echo "Falha ao conectar ao PostgreSQL."
     return 1
+
+  # exemplo de uso
+  # read host port <<< $(get_host_port "$POSTGRES_HOST" "$POSTGRES_PORT" "$POSTGRES_USER" "$POSTGRES_DB" "$POSTGRES_PASSWORD")
+  # if [ $? -gt 0 ]; then
+  #  echo_error "Não foi possível conectar ao banco de dados."
+  #  exit 1
+  # fi
 }
 
 ##############################################################################
@@ -572,8 +579,6 @@ function determinar_gateway_vpn() {
   #echo "VPN Gateway IP: $vpn_gateway_ip"
 }
 
-
-
 ##############################################################################
 ### FUNÇÕES PARA TRATAR TRATAMENTO DE IMAGENS DOCKER, DOCKERFILE E DOCKER-COMPOSE
 ##############################################################################
@@ -641,6 +646,10 @@ function escolher_imagem_base() {
 #echo "Nome base: $nome_base"
 }
 
+##############################################################################
+### TRATAMENTOS PARA ARQUIVO .INI
+##############################################################################
+
 function get_project_file() {
     local dir_path="$1"
     local ini_file_path="$2"
@@ -662,6 +671,34 @@ function get_project_file() {
 
     # Retorna o valor da variável _project_file
     echo "$_project_file"
+}
+
+function list_keys_in_section() {
+    local ini_file_path="$1"
+    local section="$2"
+    local -n keys_array=$3  # O array é passado por referência
+
+    # Limpa o array antes de popular
+    keys_array=()
+
+    # Extrai as chaves da seção especificada
+    while read -r line; do
+        if [[ $line =~ ^\[.*\] ]]; then
+            break  # Encerra ao encontrar outra seção
+        elif [[ $line =~ ^[^#]*= ]]; then
+            key=$(echo "$line" | awk -F= '{print $1}')
+            keys_array+=("$key")  # Adiciona a chave ao array
+        fi
+    done < <(awk "/^\[$section\]/ {flag=1; next} /^\[/ {flag=0} flag {print}" "$ini_file_path")
+
+#    # Exemplo de uso
+     #declare -a keys
+     #list_keys_in_section "config.ini" "extensions" keys
+     #
+     ## Exibe as chaves
+     #for key in "${keys[@]}"; do
+     #    echo "$key"
+     #done
 }
 
 ##############################################################################
@@ -703,8 +740,9 @@ function imprime_variaveis_env() {
   local env_file_path="$1"
 
   while IFS= read -r line; do
+
     # Ignora linhas em branco ou comentários
-    if [ -n "$line" ] && expr "$line" : '#.*' > /dev/null; then
+    if [ -n "$line" ] && ! expr "$line" : '#.*' > /dev/null; then
       # Extrai o nome da variável e o valor, com base no formato "chave=valor"
       var_name=$(echo "$line" | cut -d'=' -f1)
       var_value=$(echo "$line" | cut -d'=' -f2-)
@@ -756,6 +794,50 @@ function imprime_variaveis_env() {
   #Função: Define a variável como um array somente leitura.
   #Exemplo: declare -ar ARRAY significa que o array ARRAY não pode ser alterado após sua criação.
 }
+
+##############################################################################
+### TRATAMENTOS PARA EXTENSÕES
+##############################################################################
+function extension_generate_project() {
+  local inifile_path=$1
+  shift
+  local command=$1
+  shift
+  local arg_command=$1
+  local option="${*:2}"
+  local arg_count=$#
+
+  echo ">>> ${FUNCNAME[0]} $arg_command $option"
+
+  declare -a comandos_disponiveis
+  list_keys_in_section "$inifile_path" "extensions" comandos_disponiveis
+
+  if [ "$arg_count" -eq 0 ]; then
+    echo_error "Deve informar o nome do projeto base que deseja gerar."
+    echo_warning "Projetos base disponíveis: ${comandos_disponiveis[*]}"
+    exit 1
+  elif [ "$arg_count" -ge 1 ]; then
+    if ! in_array "$arg_command" "${comandos_disponiveis[*]}"; then
+      echo_error "Argumento [$arg_command] não existe para o comando [$command]."
+      echo_warning "Projetos base disponíveis: ${comandos_disponiveis[*]}"
+      exit 1
+    else
+      local script_path
+      script_path=$(get_project_file "$PROJECT_DEV_DIR" "$inifile_path" "extensions" "$arg_command")
+      echo_warning "Executando script $script_path"
+
+      if [ -f "$script_path" ] && [ -x "$script_path" ]; then
+        shift
+        "$script_path" $option
+      else
+        echo_error "O arquivo $script_path não existe ou não tem permissão de execução."
+        exit 99
+      fi
+    fi
+  fi
+}
+
+
 ##############################################################################
 ### OUTRAS FUNÇÕES
 ##############################################################################
@@ -787,60 +869,68 @@ function check_command_status_on_error_exit() {
 # Função para verificar o comando de inicialização da aplicação no ambiente de desenvolvimento
 function verificar_comando_inicializacao_ambiente_dev() {
     local root_dir="$1"
+    local tipo_projeto=""
     local mensagem=""
-    local codigo_retorno=1  # Definido como falha por padrão
 
-    # Verifica se o arquivo manage.py existe (Django)
+    # Verifica se é Django
     if [ -f "$root_dir/manage.py" ]; then
-        mensagem="Django detectado no diretório: $root_dir"
-        codigo_retorno=0
+        tipo_projeto="DJANGO"
+        mensagem="Django detectado"
+        echo "$tipo_projeto $mensagem"
+        return 0
 
-    # Verifica se o arquivo index.php existe (PHP)
-    elif [ -f "$root_dir/index.php" ]; then
-        mensagem="PHP detectado no diretório: $root_dir"
-        codigo_retorno=0
+      # Verifica se é Maven com Tomcat
+      elif [ -f "$root_dir/run-catalina.sh" ]; then
+          tipo_projeto="MAVEN-TOMCAT"
+          mensagem="Maven com Tomcat detectado"
+          echo "$tipo_projeto $mensagem"
+          return 0
 
-    # Verifica se o arquivo package.json existe (Node.js)
-    elif [ -f "$root_dir/package.json" ]; then
-        mensagem="Node.js detectado no diretório: $root_dir"
-        codigo_retorno=0
+      # Verifica se é PHP
+      elif [ -f "$root_dir/index.php" ]; then
+          tipo_projeto="PHP"
+          mensagem="PHP detectado"
+          echo "$tipo_projeto $mensagem"
+          return 0
 
-    # Verifica se o arquivo composer.json existe (PHP com Composer)
-    elif [ -f "$root_dir/composer.json" ]; then
-        mensagem="PHP com Composer detectado no diretório: $root_dir"
-        codigo_retorno=0
+      # Verifica se é Node.js
+      elif [ -f "$root_dir/package.json" ]; then
+          tipo_projeto="NODEJS"
+          mensagem="Node.js detectado"
+          echo "$tipo_projeto $mensagem"
+          return 0
 
-    # Verifica se o arquivo Gemfile existe (Ruby on Rails)
-    elif [ -f "$root_dir/Gemfile" ]; then
-        mensagem="Ruby on Rails detectado no diretório: $root_dir"
-        codigo_retorno=0
+      # Verifica se é PHP com Composer
+      elif [ -f "$root_dir/composer.json" ]; then
+          tipo_projeto="PHP-COMPOSE"
+          mensagem="PHP com Composer detectado"
+          echo "$tipo_projeto $mensagem"
+          return 0
 
-    # Verifica se o arquivo config.ru existe (Rack ou Sinatra - Ruby)
-    elif [ -f "$root_dir/config.ru" ]; then
-        mensagem="Rack/Sinatra detectado no diretório: $root_dir"
-        codigo_retorno=0
-
-    else
-        mensagem="Nenhum comando de inicialização detectado no diretório $root_dir."
-        codigo_retorno=1
+      # Verifica se é Ruby on Rails
+      elif [ -f "$root_dir/Gemfile" ]; then
+          tipo_projeto="RUBY-RAILS"
+          mensagem="Ruby on Rails detectado"
+          echo "$tipo_projeto $mensagem"
+          return 0
     fi
 
-    # Retorna a mensagem e o código de retorno
-    echo "$mensagem"
-    return $codigo_retorno
+    # Se nenhum projeto foi detectado
+    echo "INDEFINIDO Nenhum projeto detectado"
+    return 1
 
-#    # Exemplo de uso:
-     #root_dir="/caminho/do/diretorio"
-     #mensagem=$(verificar_comando_inicializacao_ambiente_dev "$root_dir")
-     #codigo_retorno=$?
-     #
-     #if [ $codigo_retorno -eq 0 ]; then
-     #    echo "Iniciando aplicação detectada..."
-     #    echo "$mensagem"
-     #else
-     #    echo "Erro: Nenhuma aplicação detectada."
-     #    echo "$mensagem"
-     #fi
+    # Exemplo de uso:
+    #  result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
+    #  _return_func=$?  # Captura o valor de retorno da função
+    #  read tipo_projeto mensagem <<< "$result"
+    #
+    # if [ _return_func -gt 0 ]; then
+    #    echo "Erro: $mensagem"
+    #    exit 1
+    # else
+    #    echo "Tipo de projeto: $tipo_projeto"
+    #    echo "Mensagem: $mensagem"
+    # fi
 }
 
 function create_pre_push_hook() {

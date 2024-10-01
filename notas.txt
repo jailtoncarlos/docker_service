@@ -71,3 +71,19 @@ O que é correto, pois --build e --detach são passados como argumentos separado
  fi
 ======================================================================================================
 ###
+String multilinha SERVICES_DEPENDENCIES: Quando uma string multilinha como SERVICES_DEPENDENCIES é usada em uma
+iteração (for e in ${SERVICES_DEPENDENCIES[@]}; do), o Bash separa cada linha e trata-a como um único item.
+Como o valor de SERVICES_DEPENDENCIES tem quebras de linha, ele trata cada linha como uma entrada.
+
+Array DICT_SERVICES_DEPENDENCIES: Já o array DICT_SERVICES_DEPENDENCIES contém exatamente os mesmos elementos que foram
+adicionados de forma explícita no loop anterior.
+Como cada linha de SERVICES_DEPENDENCIES foi adicionada como um item separado ao array, o comportamento na iteração
+também será o mesmo, porque o array contém os mesmos elementos que estavam nas linhas da string.
+
+Com array, podemos fazer as seguintes operações
+1. Acesso a Elementos Específicos: echo "${DICT_SERVICES_DEPENDENCIES[0]}"
+2. Iteração Elemento por Elemento:
+3. Adicionar ou Remover Elementos: DICT_SERVICES_DEPENDENCIES+=("new_service")
+4. Substituição de Elementos Específicos: DICT_SERVICES_DEPENDENCIES[1]="new_value"
+5. Verificar o Número de Elementos: echo "Total de serviços: ${#DICT_SERVICES_DEPENDENCIES[@]}"
+6. Ordenação: IFS=$'\n' sorted=($(sort <<<"${DICT_SERVICES_DEPENDENCIES[*]}"))

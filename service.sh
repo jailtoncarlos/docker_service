@@ -26,13 +26,23 @@ source "$SCRIPT_DIR/install.sh"
 source "$SCRIPT_DIR/scripts/read_ini.sh"
 
 if ! verifica_instalacao; then
-    echo_warning "Utilitário docker service não instalado!
+    echo_error "Utilitário docker service não instalado!
     Execute o comando ./install.sh"
+    exit 1
 fi
 
-if [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ] && [ "$1" == "generate-project" ]; then
-  arg_count=$#
-  echo "99999 $arg_count"
+PROJECT_DJANGO='DJANGO'
+PROJECT_DEV_DIR=$PROJECT_ROOT_DIR
+PROJECT_NAME=$(basename $PROJECT_ROOT_DIR)
+DEFAULT_BASE_DIR="$PROJECT_ROOT_DIR/$PROJECT_NAME"
+INIFILE_PATH="${SCRIPT_DIR}/config.ini"
+
+command="generate-project"
+arg_command=$1
+if [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ] && [ "$arg_command" == "$command" ]; then
+  shift
+  option=$*
+  extension_generate_project "$INIFILE_PATH" $command $option
 
 elif [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ]; then
   echo_success "Configurações iniciais do script definidas com sucesso."
@@ -40,21 +50,17 @@ elif [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ]; then
   ou use a opção \"generate-project\""
   exit 1
 else
-  mensagem=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
-  _return_func=$?
+  result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
+  _return_func=$?  # Captura o valor de retorno da função
+  read TIPO_PROJECT mensagem <<< "$result"
+
   if [ $_return_func -eq 1 ]; then
       echo_error "Ambiente de desenvolvimento não identificado."
       echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto."
       exit 1
   fi
 fi
-
-PROJECT_DEV_DIR=$PROJECT_ROOT_DIR
-
-PROJECT_NAME=$(basename $PROJECT_ROOT_DIR)
-DEFAULT_BASE_DIR="$PROJECT_ROOT_DIR/$PROJECT_NAME"
-
-INIFILE_PATH="${SCRIPT_DIR}/config.ini"
+TIPO_PROJECT=${TIPO_PROJECT:-PROJECT_DJANGO}
 
 ############## Tratamento env file ##############
 _project_file=$(get_project_file "$PROJECT_DEV_DIR" "$INIFILE_PATH" "envfile" "$PROJECT_NAME")
@@ -221,7 +227,6 @@ ARG_SERVICE_PARSE="
 web:django
 "
 EOF
-
             echo_success "Arquivo $project_env_file_sample criado."
         fi
     fi
@@ -287,23 +292,6 @@ fi
 ##############################################################################
 ### CONVERTENDO ARRAY DO .ENV NA TAD DICT
 ##############################################################################
-# String multilinha SERVICES_DEPENDENCIES: Quando uma string multilinha como SERVICES_DEPENDENCIES é usada em uma
-# iteração (for e in ${SERVICES_DEPENDENCIES[@]}; do), o Bash separa cada linha e trata-a como um único item.
-# Como o valor de SERVICES_DEPENDENCIES tem quebras de linha, ele trata cada linha como uma entrada.
-#
-# Array DICT_SERVICES_DEPENDENCIES: Já o array DICT_SERVICES_DEPENDENCIES contém exatamente os mesmos elementos que foram
-# adicionados de forma explícita no loop anterior.
-# Como cada linha de SERVICES_DEPENDENCIES foi adicionada como um item separado ao array, o comportamento na iteração
-# também será o mesmo, porque o array contém os mesmos elementos que estavam nas linhas da string.
-#
-# Com array, podemos fazer as seguintes operações
-# 1. Acesso a Elementos Específicos: echo "${DICT_SERVICES_DEPENDENCIES[0]}"
-# 2. Iteração Elemento por Elemento:
-# 3. Adicionar ou Remover Elementos: DICT_SERVICES_DEPENDENCIES+=("new_service")
-# 4. Substituição de Elementos Específicos: DICT_SERVICES_DEPENDENCIES[1]="new_value"
-# 5. Verificar o Número de Elementos: echo "Total de serviços: ${#DICT_SERVICES_DEPENDENCIES[@]}"
-# 6. Ordenação: IFS=$'\n' sorted=($(sort <<<"${DICT_SERVICES_DEPENDENCIES[*]}"))
-
 # Declarações das variáveis de arrays
 DICT_COMPOSES_FILES=()
 DICT_SERVICES_COMMANDS=()
@@ -438,31 +426,34 @@ ARG_OPTIONS="${@:3}"
 SERVICE_WEB_NAME=$(get_server_name "web")
 SERVICE_DB_NAME=$(get_server_name "db")
 
-mensagem=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+  result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
+  _return_func=$?  # Captura o valor de retorno da função
+  read tipo_projeto mensagem <<< "$result"
 
-if [ "$LOGINFO" = "1" ]; then
-  echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
-  echo_info "$mensagem"
-  if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
-    echo_info "Arquivo: .env: $PROJECT_ENV_PATH_FILE"
-  fi
-  if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
-    echo_info "Arquivo: .env sample: $PROJECT_ENV_FILE_SAMPLE"
-  fi
-  if [ -f "$PROJECT_DOCKERFILE" ]; then
-    echo_info "Arquivo: Dockerfile: $PROJECT_DOCKERFILE"
-  fi
-  if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
-    echo_info "Arquivo: Dockerfile sample: $PROJECT_DOCKERFILE_SAMPLE"
-  fi
-  if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
-    echo_info "Arquivo: docker-compose.yml: $PROJECT_DOCKERCOMPOSE"
-  fi
-  if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
-    echo_info "Arquivo: docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
+  if [ "$LOGINFO" = "1" ]; then
+    echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
+    echo_info "$mensagem"
+    if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
+      echo_info "Arquivo: .env: $PROJECT_ENV_PATH_FILE"
+    fi
+    if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
+      echo_info "Arquivo: .env sample: $PROJECT_ENV_FILE_SAMPLE"
+    fi
+    if [ -f "$PROJECT_DOCKERFILE" ]; then
+      echo_info "Arquivo: Dockerfile: $PROJECT_DOCKERFILE"
+    fi
+    if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
+      echo_info "Arquivo: Dockerfile sample: $PROJECT_DOCKERFILE_SAMPLE"
+    fi
+    if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
+      echo_info "Arquivo: docker-compose.yml: $PROJECT_DOCKERCOMPOSE"
+    fi
+    if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
+      echo_info "Arquivo: docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
+    fi
   fi
 fi
-
 ##############################################################################
 ### Tratamento para arquivo Dockerfile
 ##############################################################################
@@ -635,7 +626,7 @@ all:docker-compose.yml
     fi
 }
 
-if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
   verifica_e_configura_dockerfile_project "dockerfile" \
       "$PROJECT_ENV_PATH_FILE" \
       "$PROJECT_DOCKERFILE" \
@@ -659,7 +650,7 @@ fi
 ###############################################################################
 # Só insere caso a variável não exista.
 
-if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
   insert_text_if_not_exists "DATABASE_DUMP_DIR=${DATABASE_DUMP_DIR}" "$PROJECT_ENV_PATH_FILE"
   insert_text_if_not_exists "DATABASE_NAME=${DATABASE_NAME}" "$PROJECT_ENV_PATH_FILE"
   insert_text_if_not_exists "VPN_GATEWAY_FAIXA_IP=${VPN_GATEWAY_FAIXA_IP}" "$PROJECT_ENV_PATH_FILE"
@@ -692,7 +683,6 @@ fi
 #echo "SERVICE_DB_NAME = $SERVICE_DB_NAME"
 #echo "PROJECT_NAME = $PROJECT_NAME"
 #echo "BASE_DIR = $BASE_DIR"
-
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" -eq 0 ]; then
   imprime_variaveis_env $PROJECT_ENV_PATH_FILE
   echo_warning "Acima segue TODO os valores das variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
@@ -837,9 +827,9 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
     exit 1
   fi
 fi
-########################## Validações das variávies ##########################
+########################## Validações das variávies para projetos DJANGO ##########################
 sair=0
-if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
 
   # Verificar se a variável COMPOSE_PROJECT_NAME está definida
   if [ -z "${COMPOSE_PROJECT_NAME}" ]; then
@@ -962,81 +952,80 @@ get_service_names() {
   echo "${result[@]}"  # Retorna o array de nomes
 }
 
-# Função para verificar se o serviço existe
-function check_service_validity() {
-  local arg_count=$1
-  local services_local=("$2")
-  local specific_commands_local=("$3")
+# Função para verificar a validade do comando
+function check_command_validity() {
+  local command=$1
+  local available_commands=("$2")
+  local all_commands_local=("$3")
+  local arg_count=$4
+  local message=$5
 
   # As variáveis de erro são passadas por referência
-  local -n error_danger_message=$4
-  local -n error_warning_message=$5
+  local -n error_danger_message=$6
+  local -n error_warning_message=$7
 
-  if ! in_array "$ARG_SERVICE" "${services_local[*]}"; then
-    error_danger_message="Serviço [$ARG_SERVICE] não existe."
-    error_warning_message="Serviços disponíveis: ${services_local[*]}"
+  local service_name="$8"
+
+  if ! in_array "$command" "${available_commands[*]}" && ! in_array "$command" "${all_commands_local[*]}"; then
+    error_danger_message="${message} [${command}] não existe."
+    if [ ! -z "$service_name" ]; then
+      error_danger_message="${message} [${command}] não existe para o serviço [${service_name}]."
+    fi
+
+    error_warning_message="${message}s disponíveis: ${available_commands[*]}"
+
+    if [ ! -z "$all_commands_local" ]; then
+      error_warning_message="${message}s disponíveis: \n\t\tcomuns: ${all_commands_local[*]} \n\t\tespecíficos: ${available_commands[*]}"
+    fi
     return 1 # falha - serviço não existe
   else
     return 0 # sucesso - serviço existe
-  fi
-}
-
-# Função para verificar a validade do comando
-function check_command_validity() {
-  local arg_count=$1
-  local specific_commands_local=("$2")
-  local all_commands_local=("$3")
-  local service_exists=$4
-
-  # As variáveis de erro são passadas por referência
-  local -n error_danger_message=$5
-  local -n error_warning_message=$6
-
-  if [ "$service_exists" -eq 0 ] && [ "$arg_count" -ge 2 ]; then
-    if ! in_array "$ARG_COMMAND" "${all_commands_local[*]}"; then
-      error_danger_message="Comando [$ARG_COMMAND] não existe para o serviço [$ARG_SERVICE]."
-      error_warning_message="Comandos disponíveis: \n\t\tcomuns: ${COMMANDS_COMUNS[*]} \n\t\tespecíficos: ${specific_commands_local[*]}"
-      return 1 # Falha, comando não é valido
-    fi
   fi
   return 0 # Sucesso, comando válido
 }
 
 # Função para verificar e validar argumentos
 function verify_arguments() {
-  local arg_count=$1
   # Copia os argumentos para um array local
-  local services_local=("$2")
-  local specific_commands_local=("$3")
-  local all_commands_local=("$4")
+  local arg_service_name=$1
+  local arg_command=$2
+  local services_local=("$3")
+  local specific_commands_local=("$4")
+  local all_commands_local=("$5")
+  local arg_count=$6
 
   # As variáveis de erro são passadas por referência
-  local -n error_message_danger=$5
-  local -n error_message_warning=$6
+  local -n error_message_danger=$7
+  local -n error_message_warning=$8
 
-  # Verifica se o serviço existe
-  check_service_validity "$arg_count" "${services_local[*]}" "${specific_commands_local[*]}" error_message_danger error_message_warning
-  local _service_ok=$?
-
+  declare -a empty_array=()
 
   if [ $arg_count -eq 0 ]; then
     error_message_danger="Argumento [NOME_SERVICO] não informado."
     error_message_warning="Serviços disponíveis: ${services_local[@]}"
+    return 1 # falha
+  fi
+
+  # Verifica se o serviço existe
+  check_command_validity "$arg_service_name" "${services_local[*]}" "${empty_array[*]}" "$arg_count" "Serviço" error_message_danger error_message_warning
+  local _service_ok=$?
+  if [ $_service_ok -eq 1 ]; then
     return 1
-  elif [ $arg_count -eq 1 ]; then
+  fi
+
+  if [ $arg_count -eq 1 ]; then
     if [ $_service_ok -eq 0 ]; then # serviço existe
       error_message_danger="Argumento [COMANDOS] não informado."
-      error_message_warning="Service $ARG_SERVICE\n\tComandos disponíveis: \n\t\tcomuns: ${COMMANDS_COMUNS[*]} \n\t\tespecíficos: ${specific_commands_local[*]}"
+      error_message_warning="Service $ARG_SERVICE\n\tComandos disponíveis: \n\t\tcomuns: ${all_commands_local[*]} \n\t\tespecíficos: ${specific_commands_local[*]}"
     fi
     return 1 # falha
-  elif [ $arg_count -eq 2 ]; then
-    # Verifica validade do comando
-    check_command_validity "$arg_count" "${specific_commands_local[*]}" "${all_commands_local[*]}" "$_service_ok" error_message_danger error_message_warning
-    local _command_ok=$?
-    if [ $_command_ok -eq 0 ]; then
-      return 0 # sucesso
-    fi
-    return 1 # falha
+  fi
+
+  # Verifica se o comando para o serviço existe.
+  check_command_validity "$arg_command" "${specific_commands_local[*]}" "${all_commands_local[*]}" "$arg_count" "Comando" error_message_danger error_message_warning "$arg_service_name"
+  local _command_ok=$?
+  if [ $_command_ok -eq 1 ]; then
+    return 1
   fi
   return 0 #sucesso
 }
@@ -1173,6 +1162,18 @@ function process_command() {
     command_git "${_service_name}" "$ARG_OPTIONS"
   else
     echo_warning "Comando $ARG_COMMAND sem função associada"
+
+    declare -a available_commands
+    list_keys_in_section "$INIFILE_PATH" "extensions" available_commands
+
+    for command in "${available_commands[@]}"; do
+      script_path=$(get_project_file "$PROJECT_DEV_DIR" "$INIFILE_PATH" "extensions" "$command")
+      # Verifica e remove ocorrências de "//"
+      script_path=$(echo "$script_path" | sed 's#//*#/#g')
+
+      arg_command=${ARG_COMMAND//-/_}
+      "${SCRIPT_DIR}/${script_path}" "$arg_command" $ARG_OPTIONS
+    done
   fi
 }
 
@@ -1704,7 +1705,7 @@ function command_web_django_debug() {
     echo_warning "Este comando (${_service_name}) depende dos serviços listados acima para funcionar."
     echo_info "Você pode inicializar todos eles subindo o serviço \"${_service_name}\" (\"<<service docker>> ${_service_name} up\") e
     executando \"<<service docker>> ${_service_name} debug <<port_number>>\" em outro terminal."
-    exit 99
+    exit 1
   fi
 
   database_wait
@@ -2005,19 +2006,24 @@ function main() {
   declare -a specific_commands_local
   dict_get_and_convert "$ARG_SERVICE" "${DICT_SERVICES_COMMANDS[*]}" specific_commands_local
 
+
   local services_local=($(dict_keys "${DICT_SERVICES_COMMANDS[*]}"))
-  local all_commands_local=("${specific_commands_local[@]}")
-  all_commands_local+=("${COMMANDS_COMUNS[@]}")
+#  local all_commands_local=("${specific_commands_local[@]}")
+#  all_commands_local+=("${COMMANDS_COMUNS[@]}")
+  local all_commands_local=("${COMMANDS_COMUNS[@]}")
+
 
   error_danger=""
   error_warning=""
 
-  verify_arguments "$arg_count"  "${services_local[*]}"  "${specific_commands_local[*]}" "${all_commands_local[*]}" error_danger error_warning
+  verify_arguments "$ARG_SERVICE" "$ARG_COMMAND" "${services_local[*]}" "${specific_commands_local[*]}" "${all_commands_local[*]}" "$arg_count" error_danger error_warning
   argumento_valido=$?
 
   # Verifica o código de saída da função
   if [ $argumento_valido -ne 1 ]; then
-    create_pre_push_hook "$COMPOSE_PROJECT_NAME" "$COMPOSE" "$SERVICE_WEB_NAME" "$USER_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
+    if [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
+      create_pre_push_hook "$COMPOSE_PROJECT_NAME" "$COMPOSE" "$SERVICE_WEB_NAME" "$USER_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
+    fi
 
     # Processa os comandos recebidos
     process_command "$arg_count" "$service_exists"
@@ -2029,8 +2035,8 @@ function main() {
 }
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
-  if [ "$LOGINFO" = "1" ]; then
-    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". DEFINA \"LOGINFO=0\" PARA NÃO MAIS EXIBIR AS MENSAGENS ACIMA!"
+  if [ "$LOGINFO" -eq 0 ]; then
+    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". DEFINA \"LOGINFO=1\" PARA NÃO MAIS EXIBIR AS MENSAGENS ACIMA!"
   fi
 
   # Chama a função principal

@@ -650,27 +650,28 @@ function escolher_imagem_base() {
 ### TRATAMENTOS PARA ARQUIVO .INI
 ##############################################################################
 
-function get_project_file() {
+function get_filename_path() {
     local dir_path="$1"
     local ini_file_path="$2"
     local section="$3"
     local key="$4"
+    local default_filename_path=""
+    local filename_path=""
 
     # Lê o valor da chave "default" na seção "$section"
-    local default_filename=$(read_ini "$ini_file_path" "$section" "default" | tr -d '\r')
-    if [ -z "$default_filename" ]; then
-        default_filename=".env.sample"
+    default_filename_path=$(read_ini "$ini_file_path" "$section" "default" | tr -d '\r')
+    if [ ! -z "$filename_path" ]; then
+      default_filename_path="${dir_path}/${default_filename_path}"
     fi
-    default_filename="${dir_path}/${default_filename}"
 
     # Lê o valor da chave correspondente ao projeto na seção "envfile"
-    local _project_file=$(read_ini "$ini_file_path" "$section" "$key" | tr -d '\r')
-    if [ -z "$_project_file" ]; then
-        _project_file="$default_filename"
+    filename_path=$(read_ini "$ini_file_path" "$section" "$key" | tr -d '\r')
+    if [ -z "$filename_path" ]; then
+        filename_path="$default_filename_path"
     fi
 
     # Retorna o valor da variável _project_file
-    echo "$_project_file"
+    echo "$filename_path"
 }
 
 function list_keys_in_section() {
@@ -823,7 +824,7 @@ function extension_generate_project() {
       exit 1
     else
       local script_path
-      script_path=$(get_project_file "$PROJECT_DEV_DIR" "$inifile_path" "extensions" "$arg_command")
+      script_path=$(get_filename_path "$PROJECT_DEV_DIR" "$inifile_path" "extensions" "$arg_command")
       echo_warning "Executando script $script_path"
 
       if [ -f "$script_path" ] && [ -x "$script_path" ]; then

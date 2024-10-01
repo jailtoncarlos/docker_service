@@ -36,6 +36,13 @@ PROJECT_DEV_DIR=$PROJECT_ROOT_DIR
 PROJECT_NAME=$(basename $PROJECT_ROOT_DIR)
 DEFAULT_BASE_DIR="$PROJECT_ROOT_DIR/$PROJECT_NAME"
 INIFILE_PATH="${SCRIPT_DIR}/config.ini"
+LOCAL_INIFILE_PATH="${SCRIPT_DIR}/config-local.ini"
+
+if [ ! -f "$LOCAL_INIFILE_PATH" ]; then
+  echo ">>> cp ${SCRIPT_DIR}/config-local-sample.ini $LOCAL_INIFILE_PATH"
+  cp "${SCRIPT_DIR}/config-local-sample.ini" "$LOCAL_INIFILE_PATH"
+fi
+
 
 command="generate-project"
 arg_command=$1
@@ -63,14 +70,14 @@ fi
 TIPO_PROJECT=${TIPO_PROJECT:-PROJECT_DJANGO}
 
 ############## Tratamento env file ##############
-_project_file=$(get_project_file "$PROJECT_DEV_DIR" "$INIFILE_PATH" "envfile" "$PROJECT_NAME")
-PROJECT_ENV_PATH_FILE=$_project_file
+filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$LOCAL_INIFILE_PATH" "envfile" "$PROJECT_NAME")
+PROJECT_ENV_PATH_FILE="${filename_path:-.env}"
 
-_project_file=$(get_project_file "$PROJECT_DEV_DIR" "$INIFILE_PATH" "envfile_sample" "$PROJECT_NAME" )
-PROJECT_ENV_FILE_SAMPLE=$_project_file
+filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$LOCAL_INIFILE_PATH" "envfile_sample" "$PROJECT_NAME" )
+PROJECT_ENV_FILE_SAMPLE="${filename_path:-.env.sample}"
 
 _project_file=$(read_ini "$INIFILE_PATH" "envfile" "$PROJECT_NAME" | tr -d '\r')
-if [ "$(dirname $PROJECT_ENV_FILE_SAMPLE)" != "$(dirname $PROJECT_ENV_PATH_FILE)" ] && [ -z "$_project_file" ] ; then
+if [ "$(dirname $PROJECT_ENV_FILE_SAMPLE)" != "$(dirname $PROJECT_ENV_PATH_FILE)" ] && [ -z "$PROJECT_ENV_PATH_FILE" ] ; then
   echo_error "O diretório do arquivo .env é diferente do arquivo $(basename $PROJECT_ENV_FILE_SAMPLE). Impossível continuar"
   echo_warning "Informe o path do arquivo .env nas configurações do \"service docker\".
   Para isso, adicione a linha <<nome_projeto>>=<<path_arquivo_env_sample>> na seção \"[envfile]\" no arquivo de
@@ -80,18 +87,18 @@ if [ "$(dirname $PROJECT_ENV_FILE_SAMPLE)" != "$(dirname $PROJECT_ENV_PATH_FILE)
 fi
 
 ############## Tratamento Dockerfile ##############
-_project_file=$(get_project_file "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockerfile" "$PROJECT_NAME")
-DEFAULT_PROJECT_DOCKERFILE=$_project_file
+filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockerfile" "$PROJECT_NAME")
+DEFAULT_PROJECT_DOCKERFILE=$filename_path
 
-_project_file=$(get_project_file "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockerfile_sample" "$PROJECT_NAME")
-DEFAULT_PROJECT_DOCKERFILE_SAMPLE=$_project_file
+filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockerfile_sample" "$PROJECT_NAME")
+DEFAULT_PROJECT_DOCKERFILE_SAMPLE=$filename_path
 
 ############## Tratamento docker-compose ##############
-_project_file=$(get_project_file "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockercompose" "$PROJECT_NAME")
-DEFAULT_PROJECT_DOCKERCOMPOSE=$_project_file
+filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockercompose" "$PROJECT_NAME")
+DEFAULT_PROJECT_DOCKERCOMPOSE=$filename_path
 
-_project_file=$(get_project_file "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockercompose_sample" "$PROJECT_NAME")
-DEFAULT_PROJECT_DOCKERCOMPOSE_SAMPLE=$_project_file
+filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockercompose_sample" "$PROJECT_NAME")
+DEFAULT_PROJECT_DOCKERCOMPOSE_SAMPLE=$filename_path
 
 ##############################################################################
 ### FUÇÕES UTILITÁRIAS
@@ -113,7 +120,7 @@ function get_server_name() {
 ##############################################################################
 function verifica_e_configura_env() {
     local project_env_file_sample="$1"
-    local project_dockerfile="$2"
+    local default_project_dockerfile="$2"
     local project_name="$3"
     local config_inifile="$4"
 
@@ -142,7 +149,8 @@ function verifica_e_configura_env() {
     }
 
     # Definir variáveis de ambiente
-    local project_root_dir=$(pwd -P)
+    local default_requirements_file #SC2155
+    project_root_dir="$(pwd -P)"
     local default_base_dir="$project_root_dir/$project_name"
     local settings_local_file_sample="local_settings_sample.py"
 
@@ -150,8 +158,8 @@ function verifica_e_configura_env() {
     # Removendo a plavra "_sample". Ex. local_settings_sample.py irá ficar local_settings.py
     local settings_local_file="${settings_local_file_sample/_sample/}"
 
-    local default_requirements_file=$(get_requirements_file "$project_root_dir")
-
+    local default_requirements_file #SC2155
+    default_requirements_file="$(get_requirements_file $project_root_dir)"
 
     # Verificar se o arquivo de exemplo de ambiente existe
     if [ ! -f "${project_env_file_sample}" ]; then
@@ -168,8 +176,8 @@ function verifica_e_configura_env() {
 
 # Criar  arquivo env sample e inserir as variáveis na ordem inversa
 cat <<EOF > "$project_env_file_sample"
-REVISADO=0
-LOGINFO=1
+REVISADO=false
+LOGINFO=false
 
 COMPOSE_PROJECT_NAME=${project_name}
 DEV_IMAGE=
@@ -197,7 +205,7 @@ BASE_DIR=${default_base_dir}
 
 WORK_DIR=/opt/app
 
-DOCKERFILE=${project_dockerfile}
+DOCKERFILE=${default_project_dockerfile}
 
 USER_NAME=$(id -un)
 USER_UID=$(id -u)
@@ -248,7 +256,6 @@ EOF
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   verifica_e_configura_env "$PROJECT_ENV_FILE_SAMPLE" "$DEFAULT_PROJECT_DOCKERFILE" "$PROJECT_NAME" "$INIFILE_PATH"
 fi
-
 ##############################################################################
 ### EXPORTANDO VARIÁVEIS DE AMBIENTE DO ARQUIVO ENV
 ##############################################################################
@@ -327,9 +334,8 @@ get_dependent_services() {
 ### DEFINIÇÕES DE VARIÁVEIS GLOBAIS
 ##############################################################################
 
-LOGINFO=${LOGINFO:-1}
-
-REVISADO=${REVISADO:-0}
+LOGINFO=${LOGINFO:-false}
+REVISADO=${REVISADO:-false}
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$PROJECT_NAME}"
 GIT_BRANCH_MAIN=${GIT_BRANCH_MAIN:-master}
@@ -371,14 +377,14 @@ PROJECT_DOCKERFILE_SAMPLE="$(dirname $PROJECT_DOCKERFILE)/$(basename $DEFAULT_PR
 
 # Tratamento para obter o path do docker-compose
 dockercompose=$(dict_get "all" "${DICT_COMPOSES_FILES[*]}")
-if [ -f "$dockercompose" ]; then
+
+if [ ! -f "$dockercompose" ]; then
   dirpath="$(dirname $dockercompose)"
   if [ "$dirpath" = "." ]; then
     dirpath="$(dirname $PROJECT_ENV_PATH_FILE)"
     dockercompose="${dirpath}/${dockercompose}"
   fi
 fi
-
 
 PROJECT_DOCKERCOMPOSE="${dockercompose:-$DEFAULT_PROJECT_DOCKERCOMPOSE}"
 PROJECT_DOCKERCOMPOSE_SAMPLE="$(dirname $PROJECT_DOCKERCOMPOSE)/$(basename $DEFAULT_PROJECT_DOCKERCOMPOSE_SAMPLE)"
@@ -431,7 +437,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   _return_func=$?  # Captura o valor de retorno da função
   read tipo_projeto mensagem <<< "$result"
 
-  if [ "$LOGINFO" = "1" ]; then
+if [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
     echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
     echo_info "$mensagem"
     if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
@@ -484,10 +490,10 @@ function verifica_e_configura_dockerfile_project() {
     fi
 
     if [ ! -f "$project_dockerfile_sample" ]; then
-      if [ "$LOGINFO" = "1" ]; then
+      if [ "$LOGINFO" = "true" ]; then
         echo_warning "Arquivo $project_dockerfile_sample não encontrado."
       fi
-    elif [ $revisado -eq 0 ]; then
+    elif [ "$revisado" = "true" ]; then
       echo_warning "Arquivo $project_dockerfile_sample encontrado."
     fi
 
@@ -495,20 +501,20 @@ function verifica_e_configura_dockerfile_project() {
       echo_warning "Arquivo $project_dockerfile não encontrado."
     fi
 
-    if [ $revisado -eq 0 ]; then
-      echo_warning "Variável REVISADO=0"
+    if [ "$revisado" = "true" ]; then
+      echo_warning "Variável REVISADO=true"
     fi
 
     # Se $dev_image não foi definida OU não existe o arquivo Dockerfile, faça
     # gere um modelo Dockerfile sample e faça uma cópia para Dockerfile.
     if [ -z "${dev_image}" ] || [ ! -f "$project_dockerfile" ]; then
-      if [ "$revisado" -eq 0 ] && [ ! -f "$project_dockerfile_sample" ] || [ ! -f "$project_dockerfile" ]; then
+      if [ "$revisado" = "false" ] && { [ ! -f "$project_dockerfile_sample" ] || [ ! -f "$project_dockerfile" ]; }; then
           echo_info "Deseja que este script gere um arquivo modelo (${nome} sample) para seu projeto?"
           read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
           resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
       fi
 
-      if [ ! -f "$project_dockerfile_sample" ]; then
+      if [ -z "$DEV_IMAGE" ] &&  [ ! -f "$project_dockerfile_sample" ]; then
           echo_error "A variável DEV_IMAGE não está definida no arquivo \"${project_env_path_file}\""
           echo_warning "Essa variável é usada pelo Dockerfile para definir a imagem base a ser utilizada para construir o contêiner."
 
@@ -546,7 +552,7 @@ function verifica_e_configura_dockerfile_project() {
         exit 1
     else
         dev_image="${dev_image:-base_image}"
-        if [ "$LOGINFO" = "1" ]; then
+        if [ "$LOGINFO" = "true" ]; then
           echo_warning "Variável de ambiente \"DEV_IMAGE=${dev_image}\" definida."
         fi
 
@@ -683,7 +689,7 @@ fi
 #echo "SERVICE_DB_NAME = $SERVICE_DB_NAME"
 #echo "PROJECT_NAME = $PROJECT_NAME"
 #echo "BASE_DIR = $BASE_DIR"
-if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" -eq 0 ]; then
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" = "false" ]; then
   imprime_variaveis_env $PROJECT_ENV_PATH_FILE
   echo_warning "Acima segue TODO os valores das variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
   echo "
@@ -745,7 +751,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" -eq 0 ]; then
   "
   echo_warning "Acima segue as principais variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
   echo_info "Antes de prosseguir, revise o conteúdo das variáveis apresentadas acima.
-  Copie a definição \"REVISADO=1\" e cole no arquivo $ENV_PATH_FILE para está mensagem não mais ser exibida.
+  Copie a definição \"REVISADO=true\" e cole no arquivo $ENV_PATH_FILE para está mensagem não mais ser exibida.
   "
   echo "Tecle [ENTER] para continuar"
   read
@@ -1167,7 +1173,7 @@ function process_command() {
     list_keys_in_section "$INIFILE_PATH" "extensions" available_commands
 
     for command in "${available_commands[@]}"; do
-      script_path=$(get_project_file "$PROJECT_DEV_DIR" "$INIFILE_PATH" "extensions" "$command")
+      script_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "extensions" "$command")
       # Verifica e remove ocorrências de "//"
       script_path=$(echo "$script_path" | sed 's#//*#/#g')
 
@@ -1197,7 +1203,7 @@ function docker_build() {
       shift  # Remove o parâmetro --force da lista de argumentos
   fi
 
-  dockerfile=$(get_project_file "${scripty_dir}" "$inifile_path" "dockerfile" "$chave_ini")
+  dockerfile=$(get_filename_path "${scripty_dir}" "$inifile_path" "dockerfile" "$chave_ini")
 
   # Substitui "_" por "-"
   image="${chave_ini//_/-}"
@@ -2035,8 +2041,8 @@ function main() {
 }
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
-  if [ "$LOGINFO" -eq 0 ]; then
-    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". DEFINA \"LOGINFO=1\" PARA NÃO MAIS EXIBIR AS MENSAGENS ACIMA!"
+  if [ "$LOGINFO" = "false" ]; then
+    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". DEFINA \"LOGINFO=true\" PARA NÃO MAIS EXIBIR AS MENSAGENS ACIMA!"
   fi
 
   # Chama a função principal

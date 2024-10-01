@@ -30,9 +30,14 @@ if ! verifica_instalacao; then
     Execute o comando ./install.sh"
 fi
 
-if [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ]; then
+if [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ] && [ "$1" == "generate-project" ]; then
+  arg_count=$#
+  echo "99999 $arg_count"
+
+elif [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ]; then
   echo_success "Configurações iniciais do script definidas com sucesso."
-  echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto."
+  echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto.
+  ou use a opção \"generate-project\""
   exit 1
 else
   mensagem=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
@@ -235,7 +240,9 @@ EOF
     fi
 }
 
-verifica_e_configura_env "$PROJECT_ENV_FILE_SAMPLE" "$DEFAULT_PROJECT_DOCKERFILE" "$PROJECT_NAME" "$INIFILE_PATH"
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+  verifica_e_configura_env "$PROJECT_ENV_FILE_SAMPLE" "$DEFAULT_PROJECT_DOCKERFILE" "$PROJECT_NAME" "$INIFILE_PATH"
+fi
 
 ##############################################################################
 ### EXPORTANDO VARIÁVEIS DE AMBIENTE DO ARQUIVO ENV
@@ -265,17 +272,18 @@ configura_env() {
 #  imprime_variaveis_env "${project_env_path_file}"
 }
 
-configura_env "$PROJECT_ENV_FILE_SAMPLE" "$PROJECT_ENV_PATH_FILE"
-_return_func=$?
-if [ "$_return_func" -ne 0 ]; then
-  echo_error "Problema relacionado ao conteúdo do arquivo .env."
-  echo_warning "Certifique-se de que o arquivo .env está formatado corretamente, especialmente
-  para variáveis multilinha, que devem ser delimitadas corretamente. O uso de aspas (\") ou
-  barras invertidas (\\) para indicar continuação de linha deve ser consistente.
-  "
-  exit 1
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+  configura_env "$PROJECT_ENV_FILE_SAMPLE" "$PROJECT_ENV_PATH_FILE"
+  _return_func=$?
+  if [ "$_return_func" -ne 0 ]; then
+    echo_error "Problema relacionado ao conteúdo do arquivo .env."
+    echo_warning "Certifique-se de que o arquivo .env está formatado corretamente, especialmente
+    para variáveis multilinha, que devem ser delimitadas corretamente. O uso de aspas (\") ou
+    barras invertidas (\\) para indicar continuação de linha deve ser consistente.
+    "
+    exit 1
+  fi
 fi
-
 ##############################################################################
 ### CONVERTENDO ARRAY DO .ENV NA TAD DICT
 ##############################################################################
@@ -330,6 +338,7 @@ get_dependent_services() {
 ##############################################################################
 ### DEFINIÇÕES DE VARIÁVEIS GLOBAIS
 ##############################################################################
+
 LOGINFO=${LOGINFO:-1}
 
 REVISADO=${REVISADO:-0}
@@ -374,11 +383,14 @@ PROJECT_DOCKERFILE_SAMPLE="$(dirname $PROJECT_DOCKERFILE)/$(basename $DEFAULT_PR
 
 # Tratamento para obter o path do docker-compose
 dockercompose=$(dict_get "all" "${DICT_COMPOSES_FILES[*]}")
-dirpath="$(dirname $dockercompose)"
-if [ "$dirpath" = "." ]; then
-  dirpath="$(dirname $PROJECT_ENV_PATH_FILE)"
-  dockercompose="${dirpath}/${dockercompose}"
+if [ -f "$dockercompose" ]; then
+  dirpath="$(dirname $dockercompose)"
+  if [ "$dirpath" = "." ]; then
+    dirpath="$(dirname $PROJECT_ENV_PATH_FILE)"
+    dockercompose="${dirpath}/${dockercompose}"
+  fi
 fi
+
 
 PROJECT_DOCKERCOMPOSE="${dockercompose:-$DEFAULT_PROJECT_DOCKERCOMPOSE}"
 PROJECT_DOCKERCOMPOSE_SAMPLE="$(dirname $PROJECT_DOCKERCOMPOSE)/$(basename $DEFAULT_PROJECT_DOCKERCOMPOSE_SAMPLE)"
@@ -623,47 +635,51 @@ all:docker-compose.yml
     fi
 }
 
-verifica_e_configura_dockerfile_project "dockerfile" \
-    "$PROJECT_ENV_PATH_FILE" \
-    "$PROJECT_DOCKERFILE" \
-    "$PROJECT_DOCKERFILE_SAMPLE" \
-    "$COMPOSE_PROJECT_NAME" \
-    "$REVISADO" \
-    "$DEV_IMAGE" \
-    "$INIFILE_PATH"
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+  verifica_e_configura_dockerfile_project "dockerfile" \
+      "$PROJECT_ENV_PATH_FILE" \
+      "$PROJECT_DOCKERFILE" \
+      "$PROJECT_DOCKERFILE_SAMPLE" \
+      "$COMPOSE_PROJECT_NAME" \
+      "$REVISADO" \
+      "$DEV_IMAGE" \
+      "$INIFILE_PATH"
 
-verifica_e_configura_dockerfile_project "docker-compose" \
-    "$PROJECT_ENV_PATH_FILE" \
-    "$PROJECT_DOCKERCOMPOSE" \
-    "$PROJECT_DOCKERCOMPOSE_SAMPLE" \
-    "$COMPOSE_PROJECT_NAME" \
-    "$REVISADO" \
-    "$DEV_IMAGE" \
-    "$INIFILE_PATH"
-
+  verifica_e_configura_dockerfile_project "docker-compose" \
+      "$PROJECT_ENV_PATH_FILE" \
+      "$PROJECT_DOCKERCOMPOSE" \
+      "$PROJECT_DOCKERCOMPOSE_SAMPLE" \
+      "$COMPOSE_PROJECT_NAME" \
+      "$REVISADO" \
+      "$DEV_IMAGE" \
+      "$INIFILE_PATH"
+fi
 ##############################################################################
 ### INSERINDO VARIÁVEIS COM VALORES PADRÃO NO INICÍO DO ARQUIVO ENV
 ###############################################################################
 # Só insere caso a variável não exista.
 
-insert_text_if_not_exists "DATABASE_DUMP_DIR=${DATABASE_DUMP_DIR}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "DATABASE_NAME=${DATABASE_NAME}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "VPN_GATEWAY_FAIXA_IP=${VPN_GATEWAY_FAIXA_IP}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "VPN_GATEWAY=${VPN_GATEWAY}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "USER_GID=${USER_GID}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "USER_UID=${USER_UID}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "USER_NAME=${USER_NAME}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "APP_PORT=${APP_PORT}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "REQUIREMENTS_FILE=${REQUIREMENTS_FILE}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "DOCKERFILE=${PROJECT_DOCKERFILE}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "POSTGRES_IMAGE=${POSTGRES_IMAGE}" "$PROJECT_ENV_PATH_FILE"
-#insert_text_if_not_exists "BASE_IMAGE=${BASE_IMAGE}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "DEV_IMAGE=${DEV_IMAGE}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "GIT_BRANCH_MAIN=${GIT_BRANCH_MAIN}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "WORK_DIR=${WORK_DIR}" "$PROJECT_ENV_PATH_FILE"
-insert_text_if_not_exists "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" "$PROJECT_ENV_PATH_FILE"
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+  insert_text_if_not_exists "DATABASE_DUMP_DIR=${DATABASE_DUMP_DIR}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "DATABASE_NAME=${DATABASE_NAME}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "VPN_GATEWAY_FAIXA_IP=${VPN_GATEWAY_FAIXA_IP}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "VPN_GATEWAY=${VPN_GATEWAY}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "USER_GID=${USER_GID}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "USER_UID=${USER_UID}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "USER_NAME=${USER_NAME}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "PGADMIN_EXTERNAL_PORT=${PGADMIN_EXTERNAL_PORT}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "REDIS_EXTERNAL_PORT=${REDIS_EXTERNAL_PORT}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "APP_PORT=${APP_PORT}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "REQUIREMENTS_FILE=${REQUIREMENTS_FILE}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "DOCKERFILE=${PROJECT_DOCKERFILE}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "POSTGRES_IMAGE=${POSTGRES_IMAGE}" "$PROJECT_ENV_PATH_FILE"
+  #insert_text_if_not_exists "BASE_IMAGE=${BASE_IMAGE}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "DEV_IMAGE=${DEV_IMAGE}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "GIT_BRANCH_MAIN=${GIT_BRANCH_MAIN}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "WORK_DIR=${WORK_DIR}" "$PROJECT_ENV_PATH_FILE"
+  insert_text_if_not_exists "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" "$PROJECT_ENV_PATH_FILE"
+fi
+
 ##############################################################################
 ### TRATAMENTO DAS VARIÁVEIS DEFINDAS NO ARQUIVO ENV
 ##############################################################################
@@ -677,7 +693,7 @@ insert_text_if_not_exists "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}" "$PROJE
 #echo "PROJECT_NAME = $PROJECT_NAME"
 #echo "BASE_DIR = $BASE_DIR"
 
-if [ "$REVISADO" -eq 0 ]; then
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" -eq 0 ]; then
   imprime_variaveis_env $PROJECT_ENV_PATH_FILE
   echo_warning "Acima segue TODO os valores das variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
   echo "
@@ -808,115 +824,118 @@ function get_compose_command() {
   return 0
 }
 
-COMPOSE=$(get_compose_command "$PROJECT_ENV_PATH_FILE" \
-    "$PROJECT_DEV_DIR" \
-    "$DICT_SERVICES_COMMANDS" \
-    "$DICT_COMPOSES_FILES" \
-    "$INIFILE_PATH")
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+  COMPOSE=$(get_compose_command "$PROJECT_ENV_PATH_FILE" \
+      "$PROJECT_DEV_DIR" \
+      "$DICT_SERVICES_COMMANDS" \
+      "$DICT_COMPOSES_FILES" \
+      "$INIFILE_PATH")
 
-_return_func=$?
-if [ $_return_func -eq 1 ]; then
-  echo_error "$COMPOSE"
-  exit 1
+  _return_func=$?
+  if [ $_return_func -eq 1 ]; then
+    echo_error "$COMPOSE"
+    exit 1
+  fi
 fi
 ########################## Validações das variávies ##########################
 sair=0
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
 
-# Verificar se a variável COMPOSE_PROJECT_NAME está definida
-if [ -z "${COMPOSE_PROJECT_NAME}" ]; then
-    echo_error "A variável COMPOSE_PROJECT_NAME não está definida no arquivo \"${PROJECT_ENV_PATH_FILE}\""
-    echo_info "Essa variável é usada pelo Docker Compose para definir o nome do projeto.
-    O nome do projeto serve como um \"prefixo\" comum para os recursos criados por aquele projeto,
-    como redes, volumes, containers e outros objetos Docker."
-    echo_info "Sugestão de nome \"COMPOSE_PROJECT_NAME=PROJECT_NAME\". Copie e cole essa definição no arquivo \"${PROJECT_ENV_PATH_FILE}\""
+  # Verificar se a variável COMPOSE_PROJECT_NAME está definida
+  if [ -z "${COMPOSE_PROJECT_NAME}" ]; then
+      echo_error "A variável COMPOSE_PROJECT_NAME não está definida no arquivo \"${PROJECT_ENV_PATH_FILE}\""
+      echo_info "Essa variável é usada pelo Docker Compose para definir o nome do projeto.
+      O nome do projeto serve como um \"prefixo\" comum para os recursos criados por aquele projeto,
+      como redes, volumes, containers e outros objetos Docker."
+      echo_info "Sugestão de nome \"COMPOSE_PROJECT_NAME=PROJECT_NAME\". Copie e cole essa definição no arquivo \"${PROJECT_ENV_PATH_FILE}\""
+      sair=1
+  fi
+
+  if [ ! -d "$BASE_DIR" ]; then
+    echo_error "Diretório base do projeto $BASE_DIR não existe.!"
+    echo_info "Defina o nome dele na variável \"BASE_DIR\" em \"${PROJECT_ENV_PATH_FILE}\""
     sair=1
-fi
+  fi
 
-if [ ! -d "$BASE_DIR" ]; then
-  echo_error "Diretório base do projeto $BASE_DIR não existe.!"
-  echo_info "Defina o nome dele na variável \"BASE_DIR\" em \"${PROJECT_ENV_PATH_FILE}\""
-  sair=1
-fi
+  file_requirements_txt="${PROJECT_ROOT_DIR}/${REQUIREMENTS_FILE}"
 
-file_requirements_txt="${PROJECT_ROOT_DIR}/${REQUIREMENTS_FILE}"
-
-if [ ! -f "$file_requirements_txt" ]; then
-  echo ""
-  echo_error "Arquivo $file_requirements_txt não existe.!"
-  echo_info "Esse arquivo possui as bibliotecas necessárias para a aplicação funcionar."
-  echo_info "Defina o nome dele na variável \"REQUIREMENTS_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
-  sair=1
-fi
-
-settings_local_file_sample=$SETTINGS_LOCAL_FILE_SAMPLE
-settings_local_file="${SETTINGS_LOCAL_FILE:-local_settings.py}"
-
-# Verifica se o arquivo local settings NÃO existe E se settings sample existe, confirmando,
-# copiara o arquivo settings sample para local settings confome nomes definidos
-# nas variáveis de ambiente acima
-if [ ! -f "$BASE_DIR/$settings_local_file" ] && [ -f "$BASE_DIR/$settings_local_file_sample" ]; then
-  echo ">>> cp $BASE_DIR/$settings_local_file_sample $BASE_DIR/$settings_local_file"
-  cp "$BASE_DIR/$settings_local_file_sample" "$BASE_DIR/$settings_local_file"
-  sleep 0.5
-
-  elif [ ! -f "$BASE_DIR/$settings_local_file_sample" ]; then
+  if [ ! -f "$file_requirements_txt" ]; then
     echo ""
-    echo_error "Arquivo settings sample ($BASE_DIR/$settings_local_file_sample) não existe.!"
-    echo_info "Esse arquivo é o modelo de configurações mínimas necessárias para a aplicação funcionar."
-    echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE_SAMPLE\" em \"${PROJECT_ENV_PATH_FILE}\""
+    echo_error "Arquivo $file_requirements_txt não existe.!"
+    echo_info "Esse arquivo possui as bibliotecas necessárias para a aplicação funcionar."
+    echo_info "Defina o nome dele na variável \"REQUIREMENTS_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
     sair=1
+  fi
 
-  elif [ ! -f "$BASE_DIR/$settings_local_file" ]; then
-    echo ""
-    echo_error "Arquivo $BASE_DIR/$settings_local_file não existe.!"
-    echo_info "Esse arquivo possui as configurações mínimas necessárias para a aplicação funcionar."
-    echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
-    sair=1
-fi
+  settings_local_file_sample=$SETTINGS_LOCAL_FILE_SAMPLE
+  settings_local_file="${SETTINGS_LOCAL_FILE:-local_settings.py}"
 
-if [ $sair -eq 1 ]; then
-  echo ""
-  echo_error "Impossível continuar!"
-  echo_error "Corriga os problemas relatados acima e então execute o comando novamente."
-  exit $sair
-fi
-
-if [ ! -f "$SCRIPT_DIR/scripts/init_database.sh" ]; then
-  echo_warning "Arquivo $SCRIPT_DIR/scripts/init_database.sh não existe. Sem ele, torna-se impossível realizar dump ou restore do banco.!"
-  echo_warning "Tecle [ENTER] para continuar."
-  read
-fi
-
-PRE_COMMIT_CONFIG_FILE="${PRE_COMMIT_CONFIG_FILE:-.pre-commit-config.yaml}"
-file_precommit_config="${PROJECT_DEV_DIR}/${PRE_COMMIT_CONFIG_FILE}"
-if [ ! -f "$file_precommit_config" ]; then
-  echo ""
-  echo_error "Arquivo file_precommit_config não existe!"
-  echo_info "O arquivo .pre-commit-config.yaml é a configuração central para o pre-commit, onde você define quais
-  hooks serão executados antes dos commits no Git. Ele automatiza verificações e formatações, garantindo que o código
-  esteja em conformidade com as regras definidas, melhorando a qualidade e consistência do projeto.
-
-  Deseja que este script copie um arquivo pré-configurado para seu projeto?"
-  read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
-
-  resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
-  if [ "$resposta" = "S" ]; then
-    echo ">>> cp ${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE} $file_precommit_config"
-    cp "${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE}" "$file_precommit_config"
+  # Verifica se o arquivo local settings NÃO existe E se settings sample existe, confirmando,
+  # copiara o arquivo settings sample para local settings confome nomes definidos
+  # nas variáveis de ambiente acima
+  if [ ! -f "$BASE_DIR/$settings_local_file" ] && [ -f "$BASE_DIR/$settings_local_file_sample" ]; then
+    echo ">>> cp $BASE_DIR/$settings_local_file_sample $BASE_DIR/$settings_local_file"
+    cp "$BASE_DIR/$settings_local_file_sample" "$BASE_DIR/$settings_local_file"
     sleep 0.5
 
-    if [ ! -d "${PROJECT_ROOT_DIR}/pre-commit-bin" ]; then
-      echo ">>> mkdir -p ${PROJECT_ROOT_DIR}/pre-commit-bin"
-      mkdir -p "${PROJECT_ROOT_DIR}/pre-commit-bin"
+    elif [ ! -f "$BASE_DIR/$settings_local_file_sample" ]; then
+      echo ""
+      echo_error "Arquivo settings sample ($BASE_DIR/$settings_local_file_sample) não existe.!"
+      echo_info "Esse arquivo é o modelo de configurações mínimas necessárias para a aplicação funcionar."
+      echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE_SAMPLE\" em \"${PROJECT_ENV_PATH_FILE}\""
+      sair=1
+
+    elif [ ! -f "$BASE_DIR/$settings_local_file" ]; then
+      echo ""
+      echo_error "Arquivo $BASE_DIR/$settings_local_file não existe.!"
+      echo_info "Esse arquivo possui as configurações mínimas necessárias para a aplicação funcionar."
+      echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
+      sair=1
+  fi
+
+  if [ $sair -eq 1 ]; then
+    echo ""
+    echo_error "Impossível continuar!"
+    echo_error "Corriga os problemas relatados acima e então execute o comando novamente."
+    exit $sair
+  fi
+
+  if [ ! -f "$SCRIPT_DIR/scripts/init_database.sh" ]; then
+    echo_warning "Arquivo $SCRIPT_DIR/scripts/init_database.sh não existe. Sem ele, torna-se impossível realizar dump ou restore do banco.!"
+    echo_warning "Tecle [ENTER] para continuar."
+    read
+  fi
+
+  PRE_COMMIT_CONFIG_FILE="${PRE_COMMIT_CONFIG_FILE:-.pre-commit-config.yaml}"
+  file_precommit_config="${PROJECT_DEV_DIR}/${PRE_COMMIT_CONFIG_FILE}"
+  if [ ! -f "$file_precommit_config" ]; then
+    echo ""
+    echo_error "Arquivo file_precommit_config não existe!"
+    echo_info "O arquivo .pre-commit-config.yaml é a configuração central para o pre-commit, onde você define quais
+    hooks serão executados antes dos commits no Git. Ele automatiza verificações e formatações, garantindo que o código
+    esteja em conformidade com as regras definidas, melhorando a qualidade e consistência do projeto.
+
+    Deseja que este script copie um arquivo pré-configurado para seu projeto?"
+    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+
+    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+    if [ "$resposta" = "S" ]; then
+      echo ">>> cp ${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE} $file_precommit_config"
+      cp "${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE}" "$file_precommit_config"
+      sleep 0.5
+
+      if [ ! -d "${PROJECT_ROOT_DIR}/pre-commit-bin" ]; then
+        echo ">>> mkdir -p ${PROJECT_ROOT_DIR}/pre-commit-bin"
+        mkdir -p "${PROJECT_ROOT_DIR}/pre-commit-bin"
+      fi
+      sleep 0.5
+
+      echo ">>> cp -r ${SCRIPT_DIR}/pre-commit-bin ${PROJECT_ROOT_DIR}/pre-commit-bin"
+      cp -r "${SCRIPT_DIR}/pre-commit-bin" "${PROJECT_ROOT_DIR}"
+      sleep 0.5
     fi
-    sleep 0.5
-
-    echo ">>> cp -r ${SCRIPT_DIR}/pre-commit-bin ${PROJECT_ROOT_DIR}/pre-commit-bin"
-    cp -r "${SCRIPT_DIR}/pre-commit-bin" "${PROJECT_ROOT_DIR}"
-    sleep 0.5
   fi
 fi
-
 ##############################################################################
 ### Funções utilitárias para instanciar os serviços
 ##############################################################################
@@ -2008,11 +2027,12 @@ function main() {
   exit 1
 
 }
-if [ "$LOGINFO" = "1" ]; then
-  echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". DEFINA \"LOGINFO=0\" PARA NÃO MAIS EXIBIR AS MENSAGENS ACIMA!"
+
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+  if [ "$LOGINFO" = "1" ]; then
+    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". DEFINA \"LOGINFO=0\" PARA NÃO MAIS EXIBIR AS MENSAGENS ACIMA!"
+  fi
+
+  # Chama a função principal
+  main "$@"
 fi
-# Chama a função principal
-main "$@"
-
-
-}

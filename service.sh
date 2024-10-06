@@ -1041,9 +1041,9 @@ function imprimir_orientacao_uso() {
   Usar: $CURRENT_FILE_NAME [NOME_SERVICO] [COMANDOS] [OPCOES]
   Nome do serviço:
     all                         Representa todos os serviços
-    web                         Serviço rodando a aplicação SUAP
+    web                         Serviço rodando a aplicação WEB
     db                          Serviço rodando o banco PostgreSQL
-    pgadmin                     [Só é iniciado sob demanda]. Deve ser iniciado após o *db* , usar o endereço http://localhost:8001 , usuário **admin@pgadmin.org** , senha **admin** .
+    pgadmin                     [Só é iniciado sob demanda]. Deve ser iniciado após o *db* , usar o endereço http://localhost:${PGADMIN_EXTERNAL_PORT} , usuário **admin@pgadmin.org** , senha **admin** .
     redis                       Serviço rodando o cache Redis
     celery                      [Só é iniciado sob demanda]. Serviço rodando a aplicacão SUAP ativando a fila de tarefa assíncrona gerenciada pelo Celery
 
@@ -1311,23 +1311,52 @@ function is_container_running() {
 
 function container_failed_to_initialize() {
   local exit_code=$?
-  local _service_name="$1"
-  shift
-  local _option="$*"
+  local error_message="$1"
+  local _service_name="$2"
+  local _option="${*:3}"
 
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
-  if [ $exit_code -ne 0 ]; then
+  if [ $exit_code -ne 0 ] || echo "$error_message" | grep -iq "error"; then
       # Exibe a mensagem de erro e interrompe a execução do script
-      echo_error "Falha ao inicializar o container."
+      echo_error "Falha ao inicializar o container.
+      $error_message"
 
-      echo_warning "Parando todos os serviços dependentes de \"$_service_name\" que estão em execução ..."
-      declare -a _name_services
-      dict_get_and_convert "$_service_name" "${DICT_SERVICES_DEPENDENCIES[*]}" _name_services
+      if  echo "$error_message" | grep -iq "port is already allocated"; then
+          # Utilizando expressão regular para capturar a porta
+          local port
+          port=$(echo "$error_message" | grep -oP '0\.0\.0\.0:\K[0-9]+')
+          # Obter o serviço que está usando a porta especificada
+          local service
+          service=$(docker ps --filter "publish=${port}" --format "{{.Names}}")
 
-      for _nservice in "${_name_services[@]}"; do
-        service_stop "$_nservice" $_option
-      done
+          echo_warning "
+          O erro que ocorreu indica que a porta $port já está em uso no sistema, e o Docker não conseguiu
+          vincular outra instância do serviço a essa mesma porta.
+          Para resolver o problema, existem algumas opções:
+          1. Definir uma nova porta para o serviço \"$_service_name\" no arquivo \".env\".
+          2. Verificar qual processo/serviço está utilizando a porta e parar o processo em execução.
+          "
+          if [ ! -z "$service" ]; then
+            echo_info "Foi detectado que o serviço \"$service\" está utilizando a porta \"$port\".
+            Deseja encerrar a execução desse serviço?"
+
+            read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+            resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+            if [ "$resposta" = "S" ]; then
+              echo ">>> docker stop $service"
+              docker stop "$service"
+            fi
+          fi
+      fi
+
+#      echo_warning "Parando todos os serviços dependentes de \"$_service_name\" que estão em execução ..."
+#      declare -a _name_services
+#      dict_get_and_convert "$_service_name" "${DICT_SERVICES_DEPENDENCIES[*]}" _name_services
+#
+#      for _nservice in "${_name_services[@]}"; do
+#        service_stop "$_nservice" $_option
+#      done
       service_stop "$_service_name" $_option
       exit 1 # falha ocorrida
   fi
@@ -1435,16 +1464,16 @@ function service_stop() {
   declare -a _name_services
   dict_get_and_convert "$_service_name" "${DICT_SERVICES_DEPENDENCIES[*]}" _name_services
 
-  for _name_service in "${_name_services[@]}"; do
-    if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
-      echo ">>> docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1"
-      docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1
+  for _nservice in "${_name_services[@]}"; do
+    if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_nservice}-1"; then
+      echo ">>> docker stop ${COMPOSE_PROJECT_NAME}-${_nservice}-1"
+      docker stop ${COMPOSE_PROJECT_NAME}-${_nservice}-1
     fi
   done
-    if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
-      echo ">>> docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1"
-      docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1
-    fi
+  if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
+    echo ">>> docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1"
+    docker stop ${COMPOSE_PROJECT_NAME}-${_service_name}-1
+  fi
 }
 
 function service_db_wait() {
@@ -1651,8 +1680,9 @@ function _service_db_up() {
     Execute novamente o comando com o argumento \"logs\" para visualizar o log de execução do Postgres."
   else
     echo "$COMPOSE up $_option $_service_name"
-    $COMPOSE up $_option $_service_name
-    container_failed_to_initialize $_service_name $_option
+#    $COMPOSE up $_option $_service_name
+    error_message=$($COMPOSE up $_option "$_service_name" 2>&1 | tee /dev/tty)
+    container_failed_to_initialize "$error_message" "$_service_name" $_option
   fi
 
   if [ "$_service_name" != "$SERVICE_DB_NAME" ] && is_container_running "$_service_name"; then
@@ -1692,7 +1722,7 @@ function command_web_django_debug() {
   if ! check_port "$_port"; then
     echo_error "A porta $_port está em uso. Impossível continuar!"
     echo_info "Execute o comando novamente passando um número de porta diferente,
-     Exemplo: <<service docker>> web debug 8001
+     Exemplo: <<service docker>> web debug 8002
      Outra alternativa é encerre o serviço que está usando essa porta."
     exit 1
   fi
@@ -1759,18 +1789,11 @@ function _service_web_up() {
   local _option="$*"
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
-  if ! check_port "$APP_PORT"; then
-    echo_error "A porta $_port está em uso. Impossível continuar!"
-    echo_info "Altere a variável \"APP_PORT"\ no arquivo \"${ENV_PATH_FILE}"\ e execute novamente o comando
-    ou encerre o serviço que está usando essa porta."
-    exit 1
-  fi
-
   database_wait
 
   echo ">>> $COMPOSE up $_option $_service_name"
-  $COMPOSE up $_option "$_service_name"
-  container_failed_to_initialize "$_service_name" $_option
+  error_message=$($COMPOSE up $_option "$_service_name" 2>&1 | tee /dev/tty)
+  container_failed_to_initialize "$error_message" "$_service_name" $_option
 }
 
 function _service_all_up() {
@@ -1787,7 +1810,7 @@ function _service_all_up() {
 }
 
 function _service_up() {
-  local _option="${@:2}"
+  local _option="${*:2}"
   local _service_name="$1"
   local _nservice
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
@@ -1802,13 +1825,14 @@ function _service_up() {
   else
     _nservice=$(get_server_name ${_service_name})
     echo ">>> $COMPOSE up $_option $_nservice"
-    $COMPOSE up $_option "$_nservice"
-    container_failed_to_initialize "$_service_name" $_option
+#    $COMPOSE up $_option "$_nservice"
+    error_message=$($COMPOSE up $_option "$_nservice" 2>&1 | tee /dev/tty)
+    container_failed_to_initialize "$error_message" "$_service_name" $_option
   fi
 }
 
 function service_up() {
-  local _option="${@:2}"
+  local _option="${*:2}"
   local _service_name=$1
 #  local _name_services=($(string_to_array $(dict_get "$ARG_SERVICE" "${DICT_SERVICES_DEPENDENCIES[*]}")))
 
@@ -1819,7 +1843,7 @@ function service_up() {
   dict_get_and_convert "$_service_name" "${DICT_SERVICES_DEPENDENCIES[*]}" _name_services
 
   for _nservice in "${_name_services[@]}"; do
-    _service_up "$_nservice" -d
+    _service_up "$_nservice" -d $_option
   done
     _service_up "$_service_name" $_option
 }
@@ -1928,8 +1952,8 @@ function service_web_build() {
   docker_build_all $2
 
   echo ">>> $COMPOSE build --no-cache $SERVICE_WEB_NAME $_option"
-  $COMPOSE build --no-cache "$SERVICE_WEB_NAME" $_option
-  container_failed_to_initialize "$_service_name" $_option
+  error_message=$($COMPOSE build --no-cache "$SERVICE_WEB_NAME" $_option 2>&1 | tee /dev/tty)
+  container_failed_to_initialize "$error_message"  "$_service_name" $_option
 
 #  service_up "$SERVICE_WEB_NAME" $_option
 }

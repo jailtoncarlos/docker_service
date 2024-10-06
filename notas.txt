@@ -30,7 +30,6 @@ O que é correto, pois --build e --detach são passados como argumentos separado
 
 ======================================================================================================
 ### Diferença entre $* e $@
-
  - $*: Combina todos os argumentos em uma única string, separada pelo primeiro caractere
  do valor da variável IFS (normalmente um espaço).
  - $@: Trata cada argumento separadamente. Cada argumento é mantido como uma entidade individual.
@@ -44,6 +43,34 @@ O que é correto, pois --build e --detach são passados como argumentos separado
     for op in "${_option[@]}"; do
         echo "Opção: $op"
     done
+
+** Mensagem: Assigning an array to a string! Assign as array, or use * instead of @ to concatenate.
+See SC2124. **
+
+> Caso 1:
+    local _option="$@"
+
+    A mensagem (SC2124)  está relacionada à maneira como a variável _option está sendo atribuída.
+    O problema ocorre porque "$@" refere-se a uma lista de argumentos
+    e não deve ser atribuída diretamente a uma string.
+
+    Para corrigir isso, você pode usar a seguinte abordagem, atribuindo como um array:
+    _option=("$@")
+    Ou, se a intenção for concatenar os argumentos em uma string, use "$*" em vez de "$@":
+    _option="$*"
+
+> Caso 2:
+    A mensagem do ShellCheck SC2124 ocorre quando se tenta atribuir um array a uma string.
+    Para corrigir isso, quando se quer acessar uma parte específica dos argumentos passados para o script,
+    use uma abordagem compatível com arrays.
+
+    Para atribuir os valores de ${@:2} corretamente a uma variável, faça da seguinte forma:
+
+    Se a intenção for trabalhar com um array:
+    _option=("${@:2}")
+
+    Se for necessário concatenar os argumentos em uma string, use "$*":
+    _option="${*:2}"
 
 ======================================================================================================
 ### Capturar mensagem de erro
@@ -69,6 +96,19 @@ O que é correto, pois --build e --detach são passados como argumentos separado
       echo "O comando docker compose falhou. Veja os detalhes do erro:"
       echo "$message_error"
  fi
+
+
+ ** Nota **
+Para capturar a saída de erro em uma variável enquanto exibe a saída padrão no terminal,
+o seguinte comando pode ser usado em um script shell:
+```
+error_message=$($COMPOSE up $_option $_service_name 2>&1 | tee /dev/tty)
+```
+
+Esse comando faz o seguinte:
+- 2>&1: Redireciona a saída de erro padrão (stderr) para a saída padrão (stdout).
+- tee /dev/tty: Exibe a saída no terminal ao mesmo tempo em que a saída é capturada em error_message.
+
 ======================================================================================================
 ###
 String multilinha SERVICES_DEPENDENCIES: Quando uma string multilinha como SERVICES_DEPENDENCIES é usada em uma

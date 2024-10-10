@@ -222,9 +222,9 @@ function criar_recriar_database() {
     local postgres_user="$4"
     local pg_command
 
-    pg_command="psql -v ON_ERROR_STOP=1 --host $host --port $postgres_port --username $postgres_user"
+    echo ">>> ${FUNCNAME[0]} $host $postgres_port $postgres_db $postgres_user "
 
-    echo ">>> ${FUNCNAME[0]} $postgres_db $postgres_user"
+    pg_command="psql -v ON_ERROR_STOP=1 --host $host --port $postgres_port --username $postgres_user"
 
     # Executa o comando SQL para excluir e recriar o banco de dados
     $pg_command <<-EOSQL
@@ -242,6 +242,8 @@ function verificar_instalar_postgis() {
     local host="$2"
     local postgres_user="$3"
     local pg_command
+
+    echo ">>> ${FUNCNAME[0]} $host $postgres_port $postgres_user"
 
     pg_command="psql -v ON_ERROR_STOP=1 --host $host --port $postgres_port --username $postgres_user"
 
@@ -302,6 +304,8 @@ function restaurar_dump_pg_restore() {
       pg_restore -h "$host" -p "$postgres_port" -U "$postgres_user" -d "$postgres_db" -j 4 -Fd -O "$sqldump" -v 2>&1 | tee /dump/restore.log
 #      exit_code="${PIPESTATUS[0]}" # Captura o código de saída de pg_restore, que é o primeiro comando do pipe
     else
+      echo ">>> touch /dump/restore.log"
+      touch /dump/restore.log
       # Uso do comando PV para acompanhar a progressão
       echo ">>> pg_restore -h $host -p $postgres_port -U $postgres_user -d $postgres_db -j 4  -Fd $sqldump -v 2>&1 | pv -ptealr -s $(du -sb $sqldump | awk '{print $1}') > /dump/restore.log"
       pg_restore -h "$host" -p "$postgres_port" -U "$postgres_user"  -d "$postgres_db" -j 4 -Fd "$sqldump" -v 2>&1 | pv -s $(du -sb "$sqldump" | awk '{print $1}') > "/dump/restore.log"

@@ -5,10 +5,10 @@
 ##############################################################################
 
 # Definição de cores para a saída no terminal
-GREEN_COLOR='\033[1;32m'   # Cor verde para sucesso
+GREEN_COLOR='\033[0;32m'   # Cor verde para sucesso
 ORANGE_COLOR='\033[0;33m'  # Cor laranja para avisos
 RED_COLOR='\033[0;31m'     # Cor vermelha para erros
-BLUE_COLOR='\033[1;34m'    # Cor azul para informações
+BLUE_COLOR='\033[0;34m'    # Cor azul para informações
 NO_COLOR='\033[0m'         # Cor neutra para resetar as cores no terminal
 
 # Função para exibir avisos com a cor laranja
@@ -468,7 +468,7 @@ function process_hosts_and_routes() {
     sleep 2  # Aguarda 2 segundos
 }
 
-check_port() {
+function check_port() {
     local _port="$1"
 
     if netstat -tuln | grep -q ":$_port"; then

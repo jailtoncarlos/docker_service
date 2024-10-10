@@ -5,25 +5,28 @@ PROJECT_ROOT_DIR=$(pwd -P)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-function check_and_load_utils() {
+function check_and_load_scripts() {
+  filename_script="$1"
+
   RED_COLOR='\033[0;31m'     # Cor vermelha para erros
   NO_COLOR='\033[0m'         # Cor neutra para resetar as cores no terminal
 
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  utils_sh="$script_dir/scripts/utils.sh"
+  scriptsh="$script_dir/${filename_script}"
 
-  if [ ! -f "$utils_sh" ]; then
-    echo -e "$RED_COLOR DANG: Shell script $utils_sh não existe.\nEsse arquivo possui as funções utilitárias necessárias.\nImpossível continuar!$NO_COLOR"
+  if [ ! -f "$scriptsh" ]; then
+    echo -e "$RED_COLOR DANG: Shell script $scriptsh não existe.\nEsse arquivo possui as funções utilitárias necessárias.\nImpossível continuar!$NO_COLOR"
     exit 1
   else
-    source "$utils_sh"
+    source "$scriptsh"
   fi
 }
-check_and_load_utils
 
 # Carrega o arquivo externo com as funções
-source "$SCRIPT_DIR/install.sh"
-source "$SCRIPT_DIR/scripts/read_ini.sh"
+check_and_load_scripts "/scripts/utils.sh"
+#check_and_load_scripts "/scripts/create_template_testdb.sh"
+check_and_load_scripts "/scripts/read_ini.sh"
+check_and_load_scripts "install.sh"
 
 if ! verifica_instalacao; then
     echo_error "Utilitário docker service não instalado!
@@ -1633,10 +1636,14 @@ function database_wait() {
   echo "--- Aguardando o banco de dados ficar pronto..."
   # Loop até que a consulta retorne verdadeiro (ou seja, 't')
   echo ">>> [LOOP] $COMPOSE exec -e PGPASSWORD=********* $SERVICE_DB_NAME  sh -c  $psql_cmd  | grep -q 't'"
-  until psql_output=$($COMPOSE exec -e PGPASSWORD=$POSTGRES_PASSWORD "$SERVICE_DB_NAME" sh -c "$psql_cmd" | grep -q 't'); do
+  psql_output=$($COMPOSE exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$SERVICE_DB_NAME" sh -c "$psql_cmd")
+  _return_func=$?
+  until [ $_return_func -eq 0 ]; do
+    echo_warning "O banco de dados ainda não está pronto, aguardando... "
+    psql_output=$($COMPOSE exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$SERVICE_DB_NAME" sh -c "$psql_cmd")
+    _return_func=$?
     psql_output=$(echo "$psql_output" | xargs)  # remove espaços
     echo "Detalhes do erro: $psql_output"
-    echo_warning "O banco de dados ainda não está pronto, aguardando... "
     sleep 2
   done
   echo_success "Banco de dados $POSTGRES_DB está pronto para uso."
@@ -1687,22 +1694,38 @@ function database_db_restore() {
 }
 
 function _service_db_up() {
-  local _option="${@:2}"
-  local _service_name=$1
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
+  local _service_name=$1
+  local _option="${@:2}"
+
+  local psql
 
   if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
-    echo_warning "O container Postgres já está em execução.
-    Execute novamente o comando com o argumento \"logs\" para visualizar o log de execução do Postgres."
+    echo_warning "O container Postgres já está em execução."
+    echo_info "Deseja abrir o log para monitorar a execução?.
+    Para sair do log, digite as teclas Ctrl + C
+    Você também pode executar manualmente a qualquer momento, assim: <<service docker>> db logs"
+    read -p "Pressione 'S' para confirmar ou [ENTER] para sair: " resposta
+    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+
+    if [ "$resposta" == "S" ]; then
+      service_logs "$_service_name" $_option
+    fi
   else
     echo "$COMPOSE up $_option $_service_name"
-#    $COMPOSE up $_option $_service_name
     error_message=$($COMPOSE up $_option "$_service_name" 2>&1 | tee /dev/tty)
     container_failed_to_initialize "$error_message" "$_service_name" $_option
   fi
 
   if [ "$_service_name" != "$SERVICE_DB_NAME" ] && is_container_running "$_service_name"; then
     service_db_wait
+
+    # Altera o valor de max_locks_per_transaction no sistema do PostgreSQL
+    # temporariamente par a sessão atual: SET max_locks_per_transaction = 250;
+    # permanentemente: ALTER SYSTEM SET max_locks_per_transaction = 250;
+    psql="psql -h $POSTGRES_HOST -p $POSTGRES_PORT -U $POSTGRES_USER -d $POSTGRES_DB"
+    local psql_cmd="$_psql -tc 'ALTER SYSTEM SET max_locks_per_transaction = ${POSTGRES_MAX_LOCKS_PER_TRANSACTION:-250};'"
+    $COMPOSE exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$SERVICE_DB_NAME" sh -c "$psql_cmd"
   fi
 
 }
@@ -2141,3 +2164,4 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   # Chama a função principal
   main "$@"
 fi
+}

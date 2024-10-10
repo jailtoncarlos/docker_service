@@ -109,6 +109,21 @@ Esse comando faz o seguinte:
 - 2>&1: Redireciona a saída de erro padrão (stderr) para a saída padrão (stdout).
 - tee /dev/tty: Exibe a saída no terminal ao mesmo tempo em que a saída é capturada em error_message.
 
+> Qual a diferença entre 2>/dev/null e /dev/null 2>&1?
+    Diferença principal:
+    - 2>/dev/null: Apenas erros (stderr) são suprimidos.
+    - /dev/null 2>&1: Tanto a saída padrão (stdout) quanto os erros (stderr) são suprimidos, descartando toda a saída do comando.
+
+    1. 2>/dev/null:
+    - Este comando redireciona somente a saída de erro (stderr) para o /dev/null.
+    - 2>: Especifica que o fluxo de erro (stderr) será redirecionado.
+    - /dev/null: Um "arquivo" especial que descarta qualquer coisa enviada para ele (basicamente, um buraco negro).
+
+    2. /dev/null 2>&1:
+    - Este comando redireciona tanto a saída de erro (stderr) quanto a saída padrão (stdout) para o /dev/null.
+    - 2>&1: Isso significa "redirecionar o fluxo de erro (stderr) para onde o fluxo de saída padrão (stdout) está indo".
+        - 2>: Redireciona o fluxo de erro (stderr).
+        - &1: Diz ao shell para redirecionar o erro para o mesmo destino que a saída padrão (stdout).
 ======================================================================================================
 ###
 String multilinha SERVICES_DEPENDENCIES: Quando uma string multilinha como SERVICES_DEPENDENCIES é usada em uma

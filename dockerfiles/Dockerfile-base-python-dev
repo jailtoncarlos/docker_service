@@ -23,10 +23,10 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key
 
 # Instalação de dependências
 # Instala a versão estável do Google Chrome Stable (navegador)
-RUN apt-get update && apt-get install -y --fix-missing wget gnupg2 unzip \
-    google-chrome-stable \
+RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends \
+    wget gnupg2 unzip google-chrome-stable \
     && apt-get -y autoremove && apt-get clean \
-    && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/*
 
 # Instalação de dependências
 RUN apt-get update \

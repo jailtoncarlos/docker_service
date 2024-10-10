@@ -12,7 +12,8 @@ ENV USER_NAME=${USER_NAME}
 USER root
 
 # Instala as dependências necessárias
-RUN apt-get update && apt-get install -y --fix-missing openssh-server openssh-client procps sudo \
+RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends \
+    openssh-server openssh-client procps sudo \
     && apt-get -y autoremove && apt-get clean \
     && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/*
 

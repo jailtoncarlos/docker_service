@@ -10,6 +10,33 @@ ENV WORK_DIR=${WORK_DIR}
 ENV REQUIREMENTS_FILE=${REQUIREMENTS_FILE}
 ENV USER_NAME=${USER_NAME}
 
+# Google Chrome Stable: É o navegador completo, a versão estável do Google Chrome,
+# utilizada por usuários para navegação e, em automação, para realizar as ações simuladas
+# nos testes (como abrir páginas, clicar em links etc.).
+
+# ChromeDriver: É um binário que atua como intermediário entre ferramentas de automação (como Selenium)
+# e o navegador Chrome. Ele traduz os comandos de automação em ações reais no navegador.
+
+# Adição da chave GPG e do repositório do Google Chrome Stable
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list
+
+# Instalação de dependências
+# Instala a versão estável do Google Chrome Stable (navegador)
+RUN apt-get update && apt-get install -y --fix-missing wget gnupg2 unzip \
+    google-chrome-stable \
+    && apt-get -y autoremove && apt-get clean \
+    && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/* \
+
+# Instalação de dependências
+RUN apt-get update \
+      && apt-get -y install wget gnupg2 unzip
+
+# Baixa o chromedriver à versão do navegador Chrome e instala do ChromeDriver
+RUN wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip &&\
+      unzip chromedriver_linux64.zip &&\
+      cp chromedriver /usr/local/bin/chromedriver
+
 # Defina o usuário padrão para o container
 USER $USER_NAME
 

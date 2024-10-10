@@ -43,3 +43,15 @@ services:
   db:
 
   pgadmin:
+
+  selenium_grid:
+    image: selenium/standalone-chrome:latest
+    shm_size: 2gb
+    ports:
+      - "4444:4444"
+    volumes:
+      - /dev/shm:/dev/shm
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - suap

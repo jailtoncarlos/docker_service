@@ -214,16 +214,24 @@ USER_GID=$(id -g)
 VPN_GATEWAY=${default_vpn_gateway_ip}
 VPN_GATEWAY_FAIXA_IP=${default_vpn_gateway_faixa_ip}
 
+BEHAVE_CHROME_WEBDRIVER=/usr/local/bin/chromedriver
+BEHAVE_BROWSER=chrome
+BEHAVE_CHROME_HEADLESS=True
+SELENIUM_GRID_HUB_URL=http://selenium_grid:4444/wd/hub
+TEMPLATE_TESTDB=template_testdb
+
+
 COMPOSES_FILES="
 all:docker-compose.yml
 "
 
 SERVICES_COMMANDS="
 all:deploy;undeploy;redeploy;status;restart;logs;up;down;
-web:makemigrations;manage;migrate;shell_plus;debug;build;git;pre-commit
+web:makemigrations;manage;migrate;shell_plus;debug;build;git;pre-commit;test_behave
 db:psql;wait;dump;restore;copy;
-pgadmin:;
+pgadmin:
 redis:
+selenium_grid:
 "
 
 SERVICES_DEPENDENCIES="
@@ -336,6 +344,12 @@ get_dependent_services() {
 
 LOGINFO=${LOGINFO:-false}
 REVISADO=${REVISADO:-false}
+
+BEHAVE_CHROME_WEBDRIVER="${BEHAVE_CHROME_WEBDRIVER:-/usr/local/bin/chromedriver}"
+BEHAVE_BROWSER="${BEHAVE_BROWSER:-chrome}"
+BEHAVE_CHROME_HEADLESS="${BEHAVE_CHROME_HEADLESS:-True}"
+SELENIUM_GRID_HUB_URL="${SELENIUM_GRID_HUB_URL:-http://selenium_grid:4444/wd/hub}"
+TEMPLATE_TESTDB="${TEMPLATE_TESTDB:-template_testdb}"
 
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-$PROJECT_NAME}"
 GIT_BRANCH_MAIN=${GIT_BRANCH_MAIN:-master}
@@ -1160,6 +1174,8 @@ function process_command() {
     command_web_django_manage  "${_service_name}" "migrate" "$ARG_OPTIONS"
   elif [ "$ARG_COMMAND" = "shell_plus" ]; then
     command_web_django_manage "${_service_name}" "shell_plus" "$ARG_OPTIONS"
+  elif [ "$ARG_COMMAND" = "test_behave" ]; then
+    command_web_test_behave  "${_service_name}" "$ARG_OPTIONS"
   elif [ "$ARG_COMMAND" = "debug" ]; then
     command_web_django_debug "${_service_name}" "$ARG_OPTIONS"
   elif [ "$ARG_COMMAND" = "pre-commit" ]; then
@@ -1703,6 +1719,59 @@ function command_web_django_manage() {
     service_exec "$_service_name" python manage.py $_option
   else
     service_run "$_service_name" python manage.py $_option
+  fi
+}
+
+function command_web_test_behave() {
+  local _service_name="$1"
+  shift # Remover o primeiro argumento posicional ($1) -- Remove o nome do serviço da lista de argumentos
+  local _option="$*"
+  echo ">>> ${FUNCNAME[0]} $_service_name $_option"
+
+  database_wait
+
+  $COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "source /scripts/create_template_testdb.sh && check_template_testdb_exists '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '$POSTGRES_PASSWORD' '$TEMPLATE_TESTDB'"
+  _return_func=$?
+  if [ "$_return_func" -eq 0 ]; then
+      echo_warning "Database template \"$TEMPLATE_TESTDB\" existe!"
+      sleep 0.5
+  else
+    echo_info "Deseja rodar o teste a partir de um database template?"
+    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+
+    if [ "$resposta" == "S" ]; then
+      # Chama a função create_template_testdb passando os argumentos necessários
+      echo ">>> $COMPOSE exec -T $SERVICE_DB_NAME ' bash -c \"source /scripts/create_template_testdb.sh && create_template_testdb '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '*********' '$TEMPLATE_TESTDB' \""
+
+      $COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "source /scripts/create_template_testdb.sh && create_template_testdb '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '$POSTGRES_PASSWORD' '$TEMPLATE_TESTDB'"
+      _return_func=$?
+      if [ $_return_func -eq 0 ]; then
+        echo_success "Template \"$TEMPLATE_TESTDB\" criado com sucesso!"
+        echo_info "Edite o arquivo de configuração ($SETTINGS_LOCAL_FILE) e inclua na variável DATABASES as linhas:
+DATABASES = {
+    'default': {
+        ...
+        'TEST': {
+            'TEMPLATE': 'template_testdb',
+        },
+    }
+}
+      "
+      echo_info "Execute novamente o <<service docker>> para dar continuidade com os testes."
+      exit 0
+      else
+        echo_error "Faha ao criar o database template de teste."
+        exit 1
+      fi
+    fi
+  fi
+
+  command="python manage.py test_behave --behave_format progress --behave_stop --noinput"
+  if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
+    service_exec "$_service_name" "$command" $_option
+  else
+    service_run "$_service_name" "$command" $_option
   fi
 }
 

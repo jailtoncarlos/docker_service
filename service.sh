@@ -231,7 +231,7 @@ all:docker-compose.yml
 SERVICES_COMMANDS="
 all:deploy;undeploy;redeploy;status;restart;logs;up;down;
 web:makemigrations;manage;migrate;shell_plus;debug;build;git;pre-commit;test_behave
-db:psql;wait;dump;restore;copy;
+db:psql;wait;dump;restore;copy;build
 pgadmin:
 redis:
 selenium_grid:
@@ -1168,7 +1168,7 @@ function process_command() {
 
   #for web containers
   elif [ "$ARG_COMMAND" = "build" ]; then
-    service_web_build "${_service_name}" "$ARG_OPTIONS"
+    service_build "${_service_name}" "$ARG_OPTIONS"
   elif [ "$ARG_COMMAND" = "manage" ]; then
     command_web_django_manage "${_service_name}" "$ARG_OPTIONS"
   elif [ "$ARG_COMMAND" = "makemigrations" ]; then
@@ -1333,6 +1333,7 @@ function container_failed_to_initialize() {
   local error_message="$1"
   local _service_name="$2"
   local _option="${*:3}"
+  local erro_resolvido=false
 
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
@@ -1504,9 +1505,21 @@ function service_db_wait() {
 
   echo "--- Aguardando a base de dados ..."
 
-  # Chamar a função para obter o host e a porta correta
+  echo_info "Aguardando a base de dados..."
+  until $COMPOSE exec $_service_name pg_isready >/dev/null 2>&1 ; do
+    error_output=$($COMPOSE logs --tail 1 $_service_name | tail -1)
+    psql_output=$(echo "$psql_output" | xargs)  # remove espaços
+    echo_warning "Container Postgres não disponível - aguarde..."
+    if [ -n "$error_output" ]; then
+      echo "ERROR: $E"
+    fi
+    sleep 1
+  done
+
+  # Define por padrão o retorno como falha
   _return_func=1
 
+  # Chamar a função para obter o host e a porta correta
   echo ">>> [LOOP] $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"source /scripts/utils.sh && get_host_port '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '*********'\""
   # Loop until para continuar tentando até que _return_func seja igual a 1
   until [ $_return_func -eq 0 ]; do
@@ -1530,12 +1543,12 @@ function service_db_wait() {
   echo ">>> [LOOP] $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"PGPASSWORD=$POSTGRES_PASSWORD $psql_command -tc 'SELECT 1;'\" 2>&1"
   until sql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "PGPASSWORD=$POSTGRES_PASSWORD $psql_command -tc 'SELECT 1;'" 2>&1); do
     psql_output=$(echo "$psql_output" | xargs)  # remove espaços
-    echo "Detalhes do erro: $psql_output"
-    echo_warning "Postgres não disponível - aguardando... "
+    echo "ERROR: $psql_output"
+    echo_warning "Banco de dados está não disponível - aguardando... "
     sleep 2
   done
 
-  echo_success "Postgres está pronto e aceitando conexões."
+  echo_success "Banco de dados está pronto e aceitando conexões."
 }
 
 function database_db_scp() {
@@ -2029,7 +2042,7 @@ function service_restart() {
 
 }
 
-function service_web_build() {
+function service_build() {
   local _option="${@:2}"
   local _service_name=$1
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
@@ -2044,10 +2057,8 @@ function service_web_build() {
   docker_build_all $2
 
   echo ">>> $COMPOSE build --no-cache $SERVICE_WEB_NAME $_option"
-  error_message=$($COMPOSE build --no-cache "$SERVICE_WEB_NAME" $_option 2>&1 | tee /dev/tty)
-  container_failed_to_initialize "$error_message"  "$_service_name" $_option
-
-#  service_up "$SERVICE_WEB_NAME" $_option
+  error_message=$($COMPOSE build --no-cache "$_service_name" $_option 2>&1 | tee /dev/tty)
+  container_failed_to_initialize "$error_message" "$_service_name" $_option
 }
 
 function service_deploy() {
@@ -2055,7 +2066,7 @@ function service_deploy() {
   local _service_name=$1
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
   service_down "$_service_name" -v $_option
-  service_web_build "$SERVICE_WEB_NAME" $_option
+  service_build "$SERVICE_WEB_NAME" $_option
 }
 
 function service_redeploy() {

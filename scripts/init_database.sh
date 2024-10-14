@@ -34,7 +34,7 @@ source "$UTILS_SH"
 # 2>/dev/null: Redireciona apenas a saída padrão (stdout) para /dev/null, descartando todas
 # as saídas normais, mas permitindo que os erros (stderr) ainda sejam exibidos.
 
-ZIPDUMP=$(ls $DIR_DUMP/*.{bkp.gz,sql.gz,tar.gz} 2>/dev/null  | head -n 1)
+ZIPDUMP=$(ls $DIR_DUMP/*.{bkp.gz,sql.gz,tar.gz,zip} 2>/dev/null  | head -n 1)
 SQLDUMP=$(ls $DIR_DUMP/*.sql 2>/dev/null)
 
 echo "DIR_DUMP: $DIR_DUMP, ZIPDUMP: $ZIPDUMP, SQLDUMP: $SQLDUMP"
@@ -64,14 +64,75 @@ fi
 ##############################################################################
 ### DEFINIÇÕES DE FUNÇÕES
 ##############################################################################
+function check_gzip() {
+  local file="$1"
+  echo ">>> ${FUNCNAME[0]} $1"
 
-# Função para retornar o caminho completo do arquivo SQLDUMP a partir de um arquivo zipdump
+  # Usa o comando 'file' para verificar se o arquivo é compactado com gzip
+  if file "$file" | grep -q "gzip compressed data"; then
+    # Verifica se o arquivo está corrompido usando gzip -t
+    if ! gzip -t "$file" 2>/dev/null; then
+      echo "--- Verificando se o arquivo está corrompido, aguarde ..."
+      echo_error "O arquivo $file está corrompido ou incompleto."
+      exit 1
+    fi
+    return 0
+  else
+    return 1
+  fi
+}
+
+function check_zip() {
+  local file="$1"
+  echo ">>> ${FUNCNAME[0]} $1"
+
+  if file "$file" | grep -q "Zip archive data"; then
+    if ! gunzip -t "$file" 2>/dev/null; then
+      echo "--- Verificando se o arquivo está corrompido, aguarde ..."
+      echo_error "O arquivo $file está corrompido ou incompleto."
+      exit 1
+    fi
+    return 0
+  else
+    return 1
+  fi
+}
+
+function is_tar_gz() {
+  local file="$1"
+  local cod_return=1
+
+  echo ">>> ${FUNCNAME[0]} $1"
+
+  if file "$file" | grep -q "gzip compressed data"; then
+    # tar tzf "$file": O comando tar tzf lista o conteúdo do
+    # arquivo .tar.gz (ou tar -tf para .tar sem compressão).
+
+    # Verifica se o tar consegue listar o conteúdo do arquivo
+    # A saída padrão (a listagem do conteúdo do tar) continua fluindo para o head,
+    # o argumento -n 1 -> ler o primeiro arquivo do conteúdo e interrompe a listagem.
+    if tar tzf "$file" | head -n 1 > /dev/null; then
+      cod_return=0
+    else
+      cod_return=1
+    fi
+  fi
+  return $cod_return
+}
+
+
+
 function get_sqldump_path() {
+# Função para definir o caminho completo do arquivo
+# na variável $sqldump passada por referência.
+# O caminho é definido a partir de extração do
+# nome do arquivo no path em $zipdump
   local zipdump="$1"   # Recebe o caminho do arquivo zipdump
   local dir_dump="$2"  # Recebe o diretório onde o dump está localizado
   local -n sqldump="$3"   # passagem por referência
 
-  # verifica se a variável NÃO está vazia ou nula.
+  # Verifica se sqldump tem o path do arquivo .sql, isto é,
+  # verifica se a variável possui conteúdo, não está vazia nem nula.
   if [ -n "$sqldump" ]; then
     echo "$sqldump"
     return 0
@@ -80,44 +141,21 @@ function get_sqldump_path() {
   # Extrai o nome base do arquivo zipdump (remove o caminho)
   local filename=$(basename "$zipdump")
 
-  # Extrai a extensão do arquivo
-  local extension="${filename##*.}"
+  # Remove todas as extensões após o primeiro ponto,
+  # ex: file.tar.gz -> file
+  local filename_no_extension="${filename%%.*}"
 
-  # Remove as duas últimas extensões do nome do arquivo
-  local filename_without_extension="${filename%.*}"
-  filename_without_extension="${filename_without_extension%.*}"
+  # O arquivo .tar contém apenas um arquivo
+  # define $sqldump como caminho do arquivo com ".sql"
+  sqldump="${dir_dump}/${filename_no_extension}.sql"
+  is_tar_gz "$zipdump"
+  return_func=$?
 
-
-  # Retorna o caminho completo do sqldump
-  sqldump="$dir_dump/$filename_without_extension"
-}
-
-function is_tar_gz() {
-    local file="$1"
-
-    # Verifica se o arquivo é um .tar.gz e lista o primeiro conteúdo
-    if tar tzf "$file" | head -n 1 &>/dev/null; then
-        return 0
-    else
-        return 1
-    fi
-# if is_tar_gz "$FILE"; then
-#    echo "O arquivo foi compactado com tar."
-# fi
-}
-
-function is_gzip() {
-    local file="$1"
-
-    # Usa o comando 'file' para verificar se o arquivo é compactado com gzip
-    if file "$file" | grep -q "gzip compressed data"; then
-        return 0
-    else
-        return 1
-    fi
-# if is_gzip "$FILE"; then
-#    echo "O arquivo foi compactado com gzip."
-# fi
+  if is_tar_gz "$zipdump" && [ "$(tar tzf "$zipdump" | head -n 2 | wc -l)" -gt 1 ]; then
+    # O arquivo .tar contém mais de um arquivo
+    # define $sqldump como diretório
+    sqldump="${dir_dump}/${filename_no_extension}"
+  fi
 }
 
 # Função para descompactar o arquivo de dump
@@ -126,35 +164,56 @@ function descompactar_tar_gz() {
   local dir_dump=$2
   local sqldump=$3
 
-   echo ">>> ${FUNCNAME[0]} $zipdump $dir_dump $sqldump"
+  echo ">>> ${FUNCNAME[0]} $zipdump $dir_dump $sqldump"
 
   # Verifica se o arquivo $zipdump existe e se é um arquivo regular
   if [ -f "$zipdump" ]; then
     # Cria o diretório se ele não existir.
 
-    if [ ! -d "$sqldump" ]; then
+    # Verifica se NÃO há uma extensão usando um colchete simples
+    if [ "${sqldump##*.}" = "$sqldump" ]; then
       mkdir -p "$sqldump"
-      exit_code=$?
-      if [ "$exit_code" -eq 1 ]; then
-        echo_error "Impossível criar o diretório!"
-      fi
-    fi
-
-    # Extrai o nome do arquivo sem a extensão
-    filename=$(basename "$zipdump")
-    filename_without_extension="${filename%.*}"
-
-    echo "--- Descompactando arquivo de dump $filename ..."
-    mkdir -p "$dir_dump/$filename_without_extension"
-
-    if is_script_initdb; then
-      echo ">>> pigz -k -dc $dir_dump/$filename | tar -xvC $sqldump -f -"
-      pigz -k -dc "$dir_dump/$filename" | tar -xvC "$sqldump" -f -
+      echo "O arquivo não tem uma extensão, diretório $sqldump criado."
     else
-      echo ">>> pigz -k -dc $dir_dump/$filename | pv | tar -C $sqldump -xf -"
-      pigz -k -dc "$dir_dump/$filename" | pv | tar -C "$sqldump" -xf -
+        echo "O arquivo possui uma extensão."
+        # TODO: fazer tratamento para descompacatar quando o arquivo .tar.gz só possui um único arquivo de contéudo.
+        extension="${sqldump##*.}"
+        echo "99999
+            TODO: fazer tratamento para descompacatar quando o arquivo .tar.gz só possui um único arquivo de contéudo.
+            extension: $extension
+            dir_dump: $dir_dump
+            sqldump: $sqldump
+            zipdump: $zipdump
+            filename: $filename
+        "
+        exit 99
+
+        # Nesse caso,  a variável $sqldump possui o arquivo com extensão .sql
+#    # Extrai o nome do único arquivo no tar.gz
+#    single_file=$(tar -tzf "$zipdump" | head -n 1)
+#
+#    # Descompacta o conteúdo diretamente para um arquivo .sql
+#    pigz -k -dc "$zipdump" | tar -O -xf - "$single_file" > "$sqldump/arquivo.sql"
+
     fi
-    exit_code=$?
+    echo "--- Descompactando arquivo de dump $filename ..."
+    if is_script_initdb; then
+      echo ">>> pigz -k -dc $zipdump | tar -xvC $sqldump -f -"
+      pigz -k -dc "$zipdump" | tar -C "$sqldump" -xvf -
+      # Argumentos pigz
+      # -k: mantem o arquivo original após a descompactação
+      # -d: descompacta o arquivo
+      # -c envia a saída descompactada para a saída padrão (stdout)
+      # Argumento tar
+      # -C "$sqldump": Muda para o diretório especificado por $sqldump antes de extrair os arquivos.
+      # -x: Extrai os arquivos do arquivo .tar
+      # -v: Exibe detalhes da extração (modo verboso, mostrando o que está sendo extraído).
+      # -f -: O -f - indica que o arquivo tar a ser extraído será lido da entrada padrão (stdin),
+      # que neste caso é o resultado do comando pigz.
+    else
+      echo ">>> pigz -k -dc $zipdump | pv | tar -C $sqldump -xf -"
+      pigz -k -dc "$zipdump" | pv | tar -C "$sqldump" -xf -
+    fi
 
     # Verifica o código de saída do comando anterior
     if [ "$exit_code" -eq 0 ]; then
@@ -170,7 +229,7 @@ function descompactar_tar_gz() {
   fi
 }
 
-function descompactar_gzip() {
+function descompactar_gzip_or_zip() {
   local zipdump="$1"
   local dir_dump="$2"
   local sqldump="$3"
@@ -183,12 +242,26 @@ function descompactar_gzip() {
     echo "--- Descompactando arquivo de dump ${sqldump} ..."
 
     if is_script_initdb; then
-      echo ">>> gzip -d $zipdump > $sqldump"
-      gzip -d "$zipdump" > "$sqldump"
+      if check_gzip "$zipdump"; then
+        echo ">>> gzip -d $zipdump > $sqldump"
+        gzip -d "$zipdump" > "$sqldump"
+      elif check_zip "$zipdump"; then
+        # O comando unzip não funciona da mesma forma que gzip -d,
+        # pois o unzip extrai o conteúdo do arquivo diretamente para o diretório
+        # e não suporta a sintaxe > "$sqldump"
+        echo ">>> unzip $zipdump > $sqldump"
+        unzip "$zipdump"
+      fi
     else
       # O pv monitora o progresso da leitura do arquivo e o envia para o gunzip
-      echo ">>> pv $zipdump | gzip -d > $sqldump"
-      pv "$zipdump" | gzip -d > "$sqldump"
+      if check_gzip "$zipdump"; then
+        echo ">>> pv $zipdump | gzip -d > $sqldump"
+        pv "$zipdump" | gzip -d > "$sqldump"
+      elif check_zip "$zipdump"; then
+        # O pv não pode ser usado diretamente com o unzip, pois este requer acesso ao arquivo ZIP diretamente.
+        echo ">>> unzip $zipdump > $sqldump"
+        unzip "$zipdump"
+      fi
     fi
     exit_code=$?
 
@@ -198,12 +271,6 @@ function descompactar_gzip() {
       return 0 # sucesso
     else
       echo "Erro durante a descompactação do arquivo."
-      echo "--- Verificando se o arquivo está corrompido, aguarde ..."
-
-      # Verifica se o arquivo está corrompido usando gzip -t
-      if ! gzip -t "$zipdump" 2>/dev/null; then
-        echo "O arquivo $zipdump está corrompido ou incompleto."
-      fi
       return 1 # Falha na descompactação ou arquivo corrompido
     fi
   else
@@ -305,7 +372,7 @@ function restaurar_dump_pg_restore() {
 #      exit_code="${PIPESTATUS[0]}" # Captura o código de saída de pg_restore, que é o primeiro comando do pipe
     else
       echo ">>> touch /dump/restore.log"
-      touch /dump/restore.log
+      touch "/dump/restore.log"
       # Uso do comando PV para acompanhar a progressão
       echo ">>> pg_restore -h $host -p $postgres_port -U $postgres_user -d $postgres_db -j 4  -Fd $sqldump -v 2>&1 | pv -ptealr -s $(du -sb $sqldump | awk '{print $1}') > /dump/restore.log"
       pg_restore -h "$host" -p "$postgres_port" -U "$postgres_user"  -d "$postgres_db" -j 4 -Fd "$sqldump" -v 2>&1 | pv -s $(du -sb "$sqldump" | awk '{print $1}') > "/dump/restore.log"
@@ -366,7 +433,6 @@ function restaurar_dump_psql() {
       echo_error "Falha ao restaurar o dump $sqldump, veja o erro acima."
       exit 1
     fi
-
   else
     echo_warning "Arquivos de dump não encontrados."
   fi
@@ -392,6 +458,7 @@ echo "dir_dump = $DIR_DUMP"
 echo "SQLDUMP = $SQLDUMP"
 echo "ZIPDUMP = $ZIPDUMP"
 
+
 # Chamar a função para obter o host e a prota correta
 read host port <<< $(get_host_port "$POSTGRES_HOST" "$POSTGRES_PORT" "$POSTGRES_USER" "$POSTGRES_DB" "$POSTGRES_PASSWORD")
 if [ $? -gt 0 ]; then
@@ -414,6 +481,11 @@ fi
 has_restore=0
 
 echo "--- Iniciando processo de restauração do dump ..."
+if [ "$SQLDUMP" = "$DIR_DUMP/" ]; then
+  echo_error "Não foi encontrado arquivo de dump!"
+  exit 1
+fi
+
 # -e verifica se um caminho (arquivo ou diretório) existe.
 # Só realiza a descompactação do arquivo se o mesmo ainda não tiver sido descompactado.
 if [ ! -e "$SQLDUMP" ] && [ -e "$ZIPDUMP" ]; then
@@ -422,15 +494,20 @@ if [ ! -e "$SQLDUMP" ] && [ -e "$ZIPDUMP" ]; then
     descompactar_tar_gz "$ZIPDUMP" "$DIR_DUMP" "$SQLDUMP"
     has_restore=$?  # Captura o código de retorno da função
     TAR_GZ=1
-  elif is_gzip "$ZIPDUMP"; then
-    descompactar_gzip "$ZIPDUMP" "$DIR_DUMP" "$SQLDUMP"
+  elif check_gzip "$ZIPDUMP" || check_zip "$ZIPDUMP"; then
+    descompactar_gzip_or_zip "$ZIPDUMP" "$DIR_DUMP" "$SQLDUMP"
     has_restore=$?  # Captura o código de retorno da função
   fi
   check_command_status_on_error_exit "Falha na descompactação." "Descompactação concluída com sucesso!"
 fi
 
+if [ "$has_restore" -eq 1 ]; then
+  echo_error "Erro ao descompactar o arquivo."
+  exit 1
+fi
+
 if [ "$has_restore" -eq 0 ] && [ ! -e "$SQLDUMP" ]; then
-  echo_warning "Não foi encontrado arquivo de dump!"
+  echo_error "Não foi encontrado arquivo de dump!"
   #Interropção com código de saída difente de zero para indicar um erro.
   exit 1
 elif [ -e "$SQLDUMP" ]; then

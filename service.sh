@@ -1247,7 +1247,7 @@ function docker_build() {
       --build-arg USER_NAME="$user_name" \
       -t "$image" \
       -f "${scripty_dir}/dockerfiles/${dockerfile}" .
-  else
+  elif [ "$force" = "falses" ]; then
       echo_warning "A imagem ${image}:latest já existe localmente.
       Caso queria reconstruir novamente a imagem, use a opção \"--force\"."
   fi
@@ -1296,10 +1296,22 @@ function build_python_nodejs_base() {
 }
 
 function docker_build_all() {
-  local force="$1"
+  echo ">>> ${FUNCNAME[0]} $force"
+
+  local force="false"
+  if [ "$1" = "--force" ]; then
+      force="true"
+      shift  # Remove o parâmetro --force da lista de argumentos
+  fi
+
   build_python_base "$force"
   build_python_base_user "$force"
   build_python_nodejs_base "$force"
+
+  if [ "$force" = "false" ]; then
+    echo "Tecle [ENTER] para continuar"
+    read
+  fi
 }
 
 #function check_option_d() {
@@ -1341,11 +1353,17 @@ function container_failed_to_initialize() {
       # Exibe a mensagem de erro e interrompe a execução do script
       echo_error "Falha ao inicializar o container.
       $error_message"
+#      if echo "$error_message" | grep -iq "Address already in use"; then
+#      fi
 
-      if  echo "$error_message" | grep -iq "port is already allocated"; then
-          # Utilizando expressão regular para capturar a porta
+      if echo "$error_message" | grep -iq "port is already allocated"; then
+          # Verifica qual container está usando a porta 5432
+          # docker inspect -f '{{.Name}} - {{.NetworkSettings.Ports}}' $(docker ps -q) | grep -q 5432
+
           local port
+          # Utilizando expressão regular para capturar a porta
           port=$(echo "$error_message" | grep -oP '0\.0\.0\.0:\K[0-9]+')
+
           # Obter o serviço que está usando a porta especificada
           local service
           service=$(docker ps --filter "publish=${port}" --format "{{.Names}}")
@@ -1366,10 +1384,10 @@ function container_failed_to_initialize() {
             if [ "$resposta" = "S" ]; then
               echo ">>> docker stop $service"
               docker stop "$service"
+              erro_resolvido=true
             fi
           fi
       fi
-
 #      echo_warning "Parando todos os serviços dependentes de \"$_service_name\" que estão em execução ..."
 #      declare -a _name_services
 #      dict_get_and_convert "$_service_name" "${DICT_SERVICES_DEPENDENCIES[*]}" _name_services
@@ -1377,8 +1395,10 @@ function container_failed_to_initialize() {
 #      for _nservice in "${_name_services[@]}"; do
 #        service_stop "$_nservice" $_option
 #      done
-      service_stop "$_service_name" $_option
-      exit 1 # falha ocorrida
+      if [ "$erro_resolvido" = false ]; then
+        service_stop "$_service_name" $_option
+        exit 1 # falha ocorrida
+      fi
   fi
 }
 
@@ -1389,7 +1409,7 @@ function service_run() {
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   if [ "$_service_name" = "$SERVICE_WEB_NAME" ]; then
-    echo ">>> $COMPOSE run --rm -w /opt/app -u jailton $_service_name $_option"
+    echo ">>> $COMPOSE run --rm -w $WORK_DIR -u jailton $_service_name $_option"
     $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME "$_service_name" $_option
   else
     echo ">>> $COMPOSE run $_service_name $_option"
@@ -1505,16 +1525,15 @@ function service_db_wait() {
 
   echo "--- Aguardando a base de dados ..."
 
-  echo_info "Aguardando a base de dados..."
-  until $COMPOSE exec $_service_name pg_isready >/dev/null 2>&1 ; do
-    error_output=$($COMPOSE logs --tail 1 $_service_name | tail -1)
-    psql_output=$(echo "$psql_output" | xargs)  # remove espaços
-    echo_warning "Container Postgres não disponível - aguarde..."
-    if [ -n "$error_output" ]; then
-      echo "ERROR: $E"
-    fi
-    sleep 1
-  done
+ #  until $COMPOSE exec $_service_name pg_isready >/dev/null 2>&1 ; do
+#    error_output=$($COMPOSE logs --tail 1 $_service_name | tail -1)
+#    psql_output=$(echo "$psql_output" | xargs)  # remove espaços
+#    echo_warning "Container Postgres não disponível - aguarde..."
+#    if [ -n "$error_output" ]; then
+#      echo "ERROR: $E"
+#    fi
+#    sleep 1
+#  done
 
   # Define por padrão o retorno como falha
   _return_func=1
@@ -1554,13 +1573,14 @@ function service_db_wait() {
 function database_db_scp() {
   local _option="${@:2}"
   local _service_name=$SERVICE_DB_NAME
-#  local _service_name=$1
+
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   if ! is_container_running "$_service_name"; then
-    echo_info "Inicializando o container db automaticamente ..."
+    echo_info "Inicializando o container $_service_name automaticamente ..."
     echo ">>> service_up $_service_name $_option -d"
     service_up $_service_name $_option -d
+    sleep 1
   fi
 
   service_db_wait
@@ -1682,7 +1702,6 @@ function database_db_restore() {
   local _success=0
   local _retorno_func=0
   echo "--- Iniciando processo de restauração do dump ..."
-
 
   service_exec "$_service_name" /docker-entrypoint-initdb.d/init_database.sh
 

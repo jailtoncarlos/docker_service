@@ -1734,15 +1734,15 @@ function _service_db_up() {
 
   if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
     echo_warning "O container Postgres já está em execução."
-    echo_info "Deseja abrir o log para monitorar a execução?.
-    Para sair do log, digite as teclas Ctrl + C
-    Você também pode executar manualmente a qualquer momento, assim: <<service docker>> db logs"
-    read -p "Pressione 'S' para confirmar ou [ENTER] para sair: " resposta
-    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
-
-    if [ "$resposta" == "S" ]; then
-      service_logs "$_service_name" $_option
-    fi
+#    echo_info "Deseja abrir o log para monitorar a execução?.
+#    Para sair do log, digite as teclas Ctrl + C
+#    Você também pode executar manualmente a qualquer momento, assim: <<service docker>> db logs"
+#    read -p "Pressione 'S' para confirmar ou [ENTER] para sair: " resposta
+#    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+#
+#    if [ "$resposta" == "S" ]; then
+#      service_logs "$_service_name" $_option
+#    fi
   else
     echo "$COMPOSE up $_option $_service_name"
     error_message=$($COMPOSE up $_option "$_service_name" 2>&1 | tee /dev/tty)

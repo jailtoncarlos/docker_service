@@ -177,16 +177,6 @@ function descompactar_tar_gz() {
     else
         echo "O arquivo possui uma extensão."
         # TODO: fazer tratamento para descompacatar quando o arquivo .tar.gz só possui um único arquivo de contéudo.
-        extension="${sqldump##*.}"
-        echo "99999
-            TODO: fazer tratamento para descompacatar quando o arquivo .tar.gz só possui um único arquivo de contéudo.
-            extension: $extension
-            dir_dump: $dir_dump
-            sqldump: $sqldump
-            zipdump: $zipdump
-            filename: $filename
-        "
-        exit 99
 
         # Nesse caso,  a variável $sqldump possui o arquivo com extensão .sql
 #    # Extrai o nome do único arquivo no tar.gz
@@ -238,7 +228,6 @@ function descompactar_gzip_or_zip() {
 
   # Verifica se o arquivo $zipdump existe e é um arquivo regular
   if [ -f "$zipdump" ]; then
-    sqldump="$sqldump.sql"
     echo "--- Descompactando arquivo de dump ${sqldump} ..."
 
     if is_script_initdb; then
@@ -249,8 +238,19 @@ function descompactar_gzip_or_zip() {
         # O comando unzip não funciona da mesma forma que gzip -d,
         # pois o unzip extrai o conteúdo do arquivo diretamente para o diretório
         # e não suporta a sintaxe > "$sqldump"
-        echo ">>> unzip $zipdump > $sqldump"
-        unzip "$zipdump"
+
+        # Descompacta o arquivo .zip
+        echo ">>> unzip - o $zipdump"
+        unzip -o "$zipdump"
+
+        # Pega o nome do arquivo extraído
+        echo ">>> unzip -l  $zipdump | awk '/---/ {getline; print $4}'"
+        extracted_file=$(unzip -l  "$zipdump" | awk '/---/ {getline; print $4}')
+
+        # Renomeia o arquivo descompactado para o valor de $sqldump
+        echo "mv $extracted_file $sqldump"
+        mv "$extracted_file" "$sqldump"
+
       fi
     else
       # O pv monitora o progresso da leitura do arquivo e o envia para o gunzip
@@ -259,8 +259,14 @@ function descompactar_gzip_or_zip() {
         pv "$zipdump" | gzip -d > "$sqldump"
       elif check_zip "$zipdump"; then
         # O pv não pode ser usado diretamente com o unzip, pois este requer acesso ao arquivo ZIP diretamente.
-        echo ">>> unzip $zipdump > $sqldump"
-        unzip "$zipdump"
+        echo ">>> unzip -o $zipdump"
+        unzip -o "$zipdump"
+
+        echo ">>> unzip -l  $zipdump | awk '/---/ {getline; print $4}'"
+        extracted_file=$(unzip -l  "$zipdump"| awk '/---/ {getline; print $4}')
+
+        echo "mv $extracted_file $sqldump"
+        mv "$extracted_file" "$sqldump"
       fi
     fi
     exit_code=$?
@@ -481,6 +487,7 @@ fi
 has_restore=0
 
 echo "--- Iniciando processo de restauração do dump ..."
+
 if [ "$SQLDUMP" = "$DIR_DUMP/" ]; then
   echo_error "Não foi encontrado arquivo de dump!"
   exit 1

@@ -20,11 +20,15 @@ WORKDIR $WORK_DIR
 # Adicionar os arquivos da aplicação
 COPY . $WORK_DIR
 
+USER root
+
 # Install requirements
 # --mount=type=cache,target=/root/.cache/pip é uma opção avançada do Docker,
 # introduzida no BuildKit (um recurso mais recente do Docker para melhorar a
 # eficiência da construção de imagens). Ela cria um cache temporário durante
 # o processo de construção.
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r ${REQUIREMENTS_FILE}
+
+USER $USER_NAME
 
 CMD ["/bin/sh", "-c", "echo 'Starting dev container'; sleep infinity"]

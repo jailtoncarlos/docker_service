@@ -53,6 +53,8 @@ WORKDIR $WORK_DIR
 # Adicionar os arquivos da aplicação
 COPY . $WORK_DIR
 
+USER root
+
 # Install requirements
 # --mount=type=cache,target=/root/.cache/pip é uma opção avançada do Docker,
 # introduzida no BuildKit (um recurso mais recente do Docker para melhorar a
@@ -62,5 +64,7 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install -r ${REQUIREMENTS_FIL
 
 # Incluir o diretório $HOME/.local/bin no PATH
 ENV PATH="$PATH:$HOME/.local/bin"
+
+WORKDIR $WORK_DIR
 
 CMD ["/bin/sh", "-c", "echo 'Starting dev container'; sleep infinity"]

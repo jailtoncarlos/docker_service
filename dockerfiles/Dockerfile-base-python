@@ -28,6 +28,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     && sed -i -e's/ main/ main contrib non-free/g' /etc/apt/sources.list
 
 RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends \
+        pip setuptools wheel \
         locales vim openssh-server git build-essential \
         nginx cron libldap2-dev libsasl2-dev libpq-dev ghostscript \
         libjpeg-dev libfreetype6-dev zlib1g-dev \

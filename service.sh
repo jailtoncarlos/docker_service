@@ -1215,9 +1215,10 @@ function docker_build() {
   local user_name="$7"
   local user_uid="$8"
   local user_gid="$9"
+  local option_force="${10}"
 
   local force="false"
-  if [ "${10}" = "--force" ]; then
+  if [ "$option_force" = "--force" ]; then
       force="true"
       shift  # Remove o parâmetro --force da lista de argumentos
   fi
@@ -1255,6 +1256,8 @@ function docker_build() {
 
 function build_python_base() {
   local force="$1"
+  echo ">>> ${FUNCNAME[0]} $force"
+
   docker_build "$SCRIPT_DIR" \
     "$INIFILE_PATH" \
     "python_base" \
@@ -1269,6 +1272,7 @@ function build_python_base() {
 
 function build_python_base_user() {
   local force="$1"
+  echo ">>> ${FUNCNAME[0]} $force"
   docker_build "$SCRIPT_DIR" \
   "$INIFILE_PATH" \
   "python_base_user" \
@@ -1283,6 +1287,7 @@ function build_python_base_user() {
 
 function build_python_nodejs_base() {
   local force="$1"
+  echo ">>> ${FUNCNAME[0]} $force"
   docker_build "$SCRIPT_DIR" \
     "$INIFILE_PATH" \
     "python_nodejs_base" \
@@ -1296,17 +1301,12 @@ function build_python_nodejs_base() {
 }
 
 function docker_build_all() {
-  echo ">>> ${FUNCNAME[0]} $force"
+  local option=$1
+  echo ">>> ${FUNCNAME[0]} $option"
 
-  local force="false"
-  if [ "$1" = "--force" ]; then
-      force="true"
-      shift  # Remove o parâmetro --force da lista de argumentos
-  fi
-
-  build_python_base "$force"
-  build_python_base_user "$force"
-  build_python_nodejs_base "$force"
+  build_python_base "$option"
+  build_python_base_user "$option"
+  build_python_nodejs_base "$option"
 
   if [ "$force" = "false" ]; then
     echo "Tecle [ENTER] para continuar"
@@ -2062,8 +2062,9 @@ function service_restart() {
 }
 
 function service_build() {
-  local _option="${@:2}"
   local _service_name=$1
+  local force=$2
+  local _option="${@:2}"
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
   # Verifica se $2 é --force e filtra
@@ -2073,7 +2074,8 @@ function service_build() {
   else
       _option="${@:2}"  # Se $2 não for --force, pega todos os argumentos a partir de $2
   fi
-  docker_build_all $2
+
+  docker_build_all "$force"
 
   echo ">>> $COMPOSE build --no-cache $SERVICE_WEB_NAME $_option"
   error_message=$($COMPOSE build --no-cache "$_service_name" $_option 2>&1 | tee /dev/tty)

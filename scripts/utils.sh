@@ -287,6 +287,9 @@ function check_db_exists() {
     local postgres_db="$2"
     local postgres_host="${3:-localhost}"
     local postgres_port=${4:-5432}
+    local postgres_password="$5"
+
+    export PGPASSWORD=$postgres_password
 
     # Use psql to check if the database exists
     result=$(psql -U "$postgres_user" -h "$postgres_host" -p "$postgres_port" -tAc "SELECT 1 FROM pg_database WHERE datname='$postgres_db';")
@@ -296,6 +299,8 @@ function check_db_exists() {
     else
         return 1
     fi
+    # Exemplo de uso:
+    # check_db_exists "$POSTGRES_USER" "$POSTGRES_DB" "$host" "$port"
 }
 
 function is_script_initdb() {
@@ -329,70 +334,31 @@ function is_first_initialization() {
     fi
 }
 
-# Função para testar conexão ao PostgreSQL e ajustar comando psql_command
-#testar_conexao_postgres()
 function get_host_port() {
+# Função para testar conexão ao PostgreSQL e ajustar comando psql_command
     local postgres_host="$1"
     local postgres_port="$2"
-    local postgres_user="$3"
-    local postgres_db="$4"
-    local postgres_password="$5"
-    local psql_command
-    local psql_output
 
-    export PGPASSWORD=$postgres_password
-
-    # Testar conexão com o host fornecido e a porta fornecida
-    psql_command="psql -v ON_ERROR_STOP=1 --host=$postgres_host --port=$postgres_port --username=$postgres_user --dbname=$postgres_db"
-    psql_output=$($psql_command -tc "SELECT 1;" )
-    # Remove espaços em branco da variável 'psql_output'
-    psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" = "1" ]; then
+    # Tenta conexão com o host e porta fornecidos
+    if pg_isready -h "$postgres_host" -p "$postgres_port" > /dev/null 2>&1; then
         echo "$postgres_host $postgres_port"
         return 0
     fi
 
-    # Testar conexão sem host e a porta fornecida
-    psql_command="psql -v ON_ERROR_STOP=1 --port=$postgres_port --username=$postgres_user"
-    psql_output=$($psql_command -tc "SELECT 1;" 2>&1)
-    psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" = "1" ]; then
-        echo "$postgres_host $postgres_port"
-        return 0
-    fi
-
-    # Testar conexão com localhost e a porta fornecida
-    psql_command="psql -v ON_ERROR_STOP=1 --host=localhost --port=$postgres_port --username=$postgres_user"
-    psql_output=$($psql_command -tc "SELECT 1;"  2>&1)
-    psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" = "1" ]; then
-        echo "localhost $postgres_port"
-        return 0
-    fi
-
-    # Testar conexão com localhost e porta 5432 (default)
-    psql_command="psql -v ON_ERROR_STOP=1 --host=localhost --port=5432 --username=$postgres_user"
-    psql_output=$($psql_command -tc "SELECT 1;"  2>&1)
-    psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" = "1" ]; then
+    # Tenta conexão com localhost e a porta padrão 5432
+    if pg_isready -h "localhost" -p "5432" > /dev/null 2>&1; then
         echo "localhost 5432"
         return 0
     fi
 
-    # Testar conexão com o host fornecido e porta 5432 (default)
-    psql_command="psql -v ON_ERROR_STOP=1 --host=$postgres_host --port=5432 --username=$postgres_user"
-    psql_output=$($psql_command -tc "SELECT 1;" 2>&1)
-    psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" = "1" ]; then
-        echo "$postgres_host port=5432"
+    # Tenta conexão sem especificar o host, usando a porta fornecida
+    if pg_isready -p "$postgres_port" > /dev/null 2>&1; then
+        echo "localhost $postgres_port"
         return 0
     fi
 
-    # Testar conexão sem host e porta 5432 (default)
-    psql_command="psql -v ON_ERROR_STOP=1  --port=5432 --username=$postgres_user"
-    psql_output=$($psql_command -tc "SELECT 1;" 2>&1)
-    psql_output=$(echo "$psql_output" | xargs)
-    if [ "$psql_output" = "1" ]; then
+    # Testa o host fornecido com a porta padrão 5432
+    if pg_isready -h "$postgres_host" -p "5432" > /dev/null 2>&1; then
         echo "$postgres_host 5432"
         return 0
     fi
@@ -401,11 +367,11 @@ function get_host_port() {
     echo "Falha ao conectar ao PostgreSQL."
     return 1
 
-  # exemplo de uso
-  # read host port <<< $(get_host_port "$POSTGRES_HOST" "$POSTGRES_PORT" "$POSTGRES_USER" "$POSTGRES_DB" "$POSTGRES_PASSWORD")
-  # if [ $? -gt 0 ]; then
-  #  echo_error "Não foi possível conectar ao banco de dados."
-  #  exit 1
+  # Exemplo de uso
+  # read host port <<< $(get_host_port "$POSTGRES_HOST" "$POSTGRES_PORT")
+  # if [ $? -ne 0 ]; then
+  #   echo "Não foi possível conectar ao servidor PostgreSQL."
+  #   exit 1
   # fi
 }
 
@@ -424,8 +390,8 @@ function add_route() {
     fi
 }
 
-# Função para atualizar o arquivo /etc/hosts
 function update_hosts_file() {
+# Função para atualizar o arquivo /etc/hosts
 # Adicionar domínio no /etc/hosts
 # O arquivo /etc/hosts é usado para mapear nomes de domínio a endereços IP localmente no sistema.
 # Adiciona uma nova entrada, permitindo que o sistema resolva $domain_name para o endereço IP especificado em $ip.
@@ -442,8 +408,8 @@ function update_hosts_file() {
     fi
 }
 
-# Função para atualizar o /etc/hosts e verificar a tabela de rotas
 function process_hosts_and_routes() {
+# Função para atualizar o /etc/hosts e verificar a tabela de rotas
     local etc_hosts="$1"  # Entrada multilinear com os domínios e IPs
     local vpn_gateway="$2"
     local route_nework="$3"
@@ -506,8 +472,8 @@ function verificar_gateway_em_uso() {
     return 1  # Retorna 1 se o IP do gateway não estiver em uso
 }
 
-# Função para verificar se uma sub-rede está em uso
 function verificar_ip_em_uso() {
+# Função para verificar se uma sub-rede está em uso
     local subnet="$1"
     docker network ls --filter driver=bridge -q | while read -r network_id; do
         docker network inspect "$network_id" --format '{{(index .IPAM.Config 0).Subnet}}' | grep -q "^$subnet$" && return 0
@@ -541,8 +507,8 @@ function encontrar_ip_disponivel() {
     return 1
 }
 
-# Função para determinar a sub-rede e o IP do gateway
 function determinar_gateway_vpn() {
+# Função para determinar a sub-rede e o IP do gateway
     local default_vpn_gateway_faixa_ip="172.19.0.0/16"
     local default_vpn_gateway_ip="172.19.0.2"
     local base_ip="172.19"
@@ -606,8 +572,8 @@ verifica_imagem_docker() {
   #fi
 }
 
-# Função para exibir as opções de imagens e retornar a escolha do usuário
 function escolher_imagem_base() {
+# Função para exibir as opções de imagens e retornar a escolha do usuário
     echo >&2 "Selecione uma das opções de imagem base para seu projeto:"
     echo >&2 "1. Imagem base de desenvolvimento Python"
     echo >&2 "2. Imagem base de desenvolvimento Python com Node.js."
@@ -838,7 +804,6 @@ function extension_generate_project() {
   fi
 }
 
-
 ##############################################################################
 ### OUTRAS FUNÇÕES
 ##############################################################################
@@ -867,8 +832,8 @@ function check_command_status_on_error_exit() {
   fi
 }
 
-# Função para verificar o comando de inicialização da aplicação no ambiente de desenvolvimento
 function verificar_comando_inicializacao_ambiente_dev() {
+# Função para verificar o comando de inicialização da aplicação no ambiente de desenvolvimento
     local root_dir="$1"
     local tipo_projeto=""
     local mensagem=""

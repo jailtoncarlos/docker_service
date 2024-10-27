@@ -284,10 +284,10 @@ function dict_get_and_convert() {
 ##############################################################################
 function check_db_exists() {
     local postgres_user="$1"
-    local postgres_db="$2"
-    local postgres_host="${3:-localhost}"
-    local postgres_port=${4:-5432}
-    local postgres_password="$5"
+    local postgres_host="${2:-localhost}"
+    local postgres_port=${3:-5432}
+    local postgres_password="$4"
+    local postgres_db="$5"
 
     export PGPASSWORD=$postgres_password
 
@@ -336,11 +336,15 @@ function is_first_initialization() {
 
 function get_host_port() {
 # Função para testar conexão ao PostgreSQL e ajustar comando psql_command
-    local postgres_host="$1"
-    local postgres_port="$2"
+    local postgres_user="$1"
+    local postgres_host="$2"
+    local postgres_port="$3"
+    local postgres_password="$4"
+
+    export PGPASSWORD=$postgres_password
 
     # Tenta conexão com o host e porta fornecidos
-    if pg_isready -h "$postgres_host" -p "$postgres_port" > /dev/null 2>&1; then
+    if pg_isready -u postgres_user -h "$postgres_host" -p "$postgres_port" > /dev/null 2>&1; then
         echo "$postgres_host $postgres_port"
         return 0
     fi

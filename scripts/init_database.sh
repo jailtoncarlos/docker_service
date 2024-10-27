@@ -464,15 +464,14 @@ echo "dir_dump = $DIR_DUMP"
 echo "SQLDUMP = $SQLDUMP"
 echo "ZIPDUMP = $ZIPDUMP"
 
-
 # Chamar a função para obter o host e a prota correta
-read host port <<< $(get_host_port "$POSTGRES_HOST" "$POSTGRES_PORT" "$POSTGRES_USER" "$POSTGRES_DB" "$POSTGRES_PASSWORD")
+read host port <<< $(get_host_port "$POSTGRES_USER" "$POSTGRES_HOST" "$POSTGRES_PORT" "$POSTGRES_PASSWORD")
 if [ $? -gt 0 ]; then
   echo_error "Não foi possível conectar ao banco de dados."
   exit 1
 fi
 #host_value="${host#*=}"
-check_db_exists "$POSTGRES_USER" "$POSTGRES_DB" "$host" "$port"
+check_db_exists "$POSTGRES_USER" "$host" "$port" "$POSTGRES_PASSWORD" "$POSTGRES_DB"
 db_exists=$?
 
 # SE este script script está sendo chamado pelo script de inicialização do container postres
@@ -518,7 +517,7 @@ if [ "$has_restore" -eq 0 ] && [ ! -e "$SQLDUMP" ]; then
   #Interropção com código de saída difente de zero para indicar um erro.
   exit 1
 elif [ -e "$SQLDUMP" ]; then
-  echo_info "Arquivo dump descompactado encontrado!"
+  echo_success "Arquivo dump descompactado encontrado!"
 fi
 
 echo "--- Apagando base $POSTGRES_DB, caso exista"

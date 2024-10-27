@@ -229,7 +229,7 @@ all:docker-compose.yml
 "
 
 SERVICES_COMMANDS="
-all:deploy;undeploy;redeploy;status;restart;logs;up;down;
+all:deploy;undeploy;redeploy;status;restart;logs;up;down
 web:makemigrations;manage;migrate;shell_plus;debug;build;git;pre-commit;test_behave
 db:psql;wait;dump;restore;copy;build
 pgadmin:
@@ -481,177 +481,192 @@ fi
 ### Tratamento para arquivo Dockerfile
 ##############################################################################
 function verifica_e_configura_dockerfile_project() {
-    local tipo="$1"  #dockerfile, docker-compose
-    local project_env_path_file="$2"
-    local project_dockerfile="$3"
-    local project_dockerfile_sample="$4"
-    local compose_project_name="$5"
-    local revisado="$6"
-    local dev_image="$7"
-    local config_inifile="$8"
+  local tipo="$1"  #dockerfile, docker-compose
+  local env_file_path="$2"
+  local docker_file_path="$3"
+  local docker_file_or_compose_path="$4"
+  local docker_file_or_compose_sample_path="$5"
+  local compose_project_name="$6"
+  local revisado="$7"
+  local dev_image="$8"
+  local config_inifile="$9"
 
-    local dockerfile_base_dev_sample
-    local resposta
-    local base_image
+  local dockerfile_base_dev_sample
+  local resposta
+  local base_image
 
-    local nome
+  local nome
+  if [ "$tipo" = "dockerfile" ]; then
+    nome="Dockerfile"
+  else
+    nome="docker-compose.yml"
+  fi
+
+  if [ ! -f ${env_file_path} ]; then
+    echo_error "Arquivo $env_file_path não encontrado. Impossível continuar!"
+    exit 1
+  fi
+
+  if [ ! -f "$docker_file_or_compose_sample_path" ]; then
+    if [ "$LOGINFO" = "true" ]; then
+      echo_warning "Arquivo $docker_file_or_compose_sample_path não encontrado."
+    fi
+  elif [ "$revisado" = "true" ]; then
+    echo_warning "Arquivo $docker_file_or_compose_sample_path encontrado."
+  fi
+
+  if [ ! -f "$docker_file_or_compose_path" ]; then
+    echo_warning "Arquivo $docker_file_or_compose_path não encontrado."
+  fi
+
+  if [ "$revisado" = "true" ]; then
+    echo_warning "Variável REVISADO=true"
+  fi
+
+  if [ ! -f "$docker_file_or_compose_path" ] && [ -f "$docker_file_or_compose_sample_path" ]; then
+    echo_warning "Detectamos que existe o arquivo $docker_file_or_compose_sample_path, porém não encontramos o arquivo $docker_file_or_compose_path."
     if [ "$tipo" = "dockerfile" ]; then
-      nome="Dockerfile"
+      echo_info "O arquivo '$docker_file_or_compose_path' contém instruções para construção de uma imagem Docker.
+      Deseja copiar o arquivo de modelo $docker_file_or_compose_path para o arquivo definitivo $docker_file_or_compose_sample_path?"
     else
-      nome="docker-compose.yml"
+      echo_info "O arquivo \"$docker_file_or_compose_path\" é um arquivo de configuração usado pela ferramenta
+      \"Docker Compose\" para definir e gerenciar múltiplos contêineres \"Docker\" como um serviço.
+      Deseja copiar o arquivo de modelo $docker_file_or_compose_path para o arquivo definitivo ${docker_file_or_compose_sample_path}?"
     fi
+    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
 
-    if [ ! -f ${project_env_path_file} ]; then
-      echo_error "Arquivo $project_env_path_file não encontrado. Impossível continuar!"
-      exit 1
-    fi
+    if [ "$resposta" = "S" ]; then
+      if [ "$tipo" != "dockerfile" ]; then
+        dockercompose_base=$(read_ini "$config_inifile" "dockercompose" "python_base" | tr -d '\r')
 
-    if [ ! -f "$project_dockerfile_sample" ]; then
-      if [ "$LOGINFO" = "true" ]; then
-        echo_warning "Arquivo $project_dockerfile_sample não encontrado."
+        project_dockercompose_base_path="$(dirname $docker_file_or_compose_path)/${dockercompose_base}"
+
+        echo ">>> cp ${script_dir}/${dockercompose_base} $(dirname $docker_file_or_compose_path)/${dockercompose_base}"
+        cp "${script_dir}/${dockercompose_base}" "$project_dockercompose_base_path"
+
+        # Ajustando o path do build dockerfile do container "postgresql" (db)
+        dockerfile_postgresql=$(read_ini "$config_inifile" "dockerfile" "postgresql" | tr -d '\r')
+        echo "--- Substituindo \"dockerfiles/${dockerfile_postgresql}\" por \"${script_dir}/dockerfiles/${dockerfile_postgresql}\" no arquivo \"${project_dockercompose_base_path}\""
+        sed -i "s|dockerfile: dockerfiles/${dockerfile_postgresql}|dockerfile: ${script_dir}/dockerfiles/${dockerfile_postgresql}|" "$project_dockercompose_base_path"
+
       fi
-    elif [ "$revisado" = "true" ]; then
-      echo_warning "Arquivo $project_dockerfile_sample encontrado."
+      echo ">>> cp $docker_file_or_compose_sample_path $docker_file_or_compose_path"
+      cp "$docker_file_or_compose_sample_path" "$docker_file_or_compose_path"
     fi
+  fi
 
-    if [ ! -f "$project_dockerfile" ]; then
-      echo_warning "Arquivo $project_dockerfile não encontrado."
-    fi
-
-    if [ "$revisado" = "true" ]; then
-      echo_warning "Variável REVISADO=true"
-    fi
-
-    # Se $dev_image não foi definida OU não existe o arquivo Dockerfile, faça
-    # gere um modelo Dockerfile sample e faça uma cópia para Dockerfile.
-    if [ -z "${dev_image}" ] || [ ! -f "$project_dockerfile" ]; then
-      if [ "$revisado" = "false" ] && { [ ! -f "$project_dockerfile_sample" ] || [ ! -f "$project_dockerfile" ]; }; then
-          echo_info "Deseja que este script gere um arquivo modelo (${nome} sample) para seu projeto?"
-          read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
-          resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
+  # Se $dev_image não foi definida OU não existe o arquivo Dockerfile, faça
+  # gere um modelo Dockerfile sample e faça uma cópia para Dockerfile.
+  if  [ ! -f "$docker_file_or_compose_path" ] || [ -z "$dev_image" ]; then
+    if [ ! -f "$docker_file_or_compose_sample_path" ] || [ ! -f "$docker_file_or_compose_path" ]; then
+      if [ -f "$docker_file_or_compose_path" ]; then
+        echo_info "Detectamos que seu projeto já tem o arquivo \"$docker_file_or_compose_path\".
+        Deseja que este script gere um arquivo modelo (${nome} sample) para seu projeto?"
+      else
+        echo_info "Deseja que este script gere um arquivo modelo (${nome} sample) para seu projeto?"
       fi
-
-      if [ -z "$DEV_IMAGE" ] &&  [ ! -f "$project_dockerfile_sample" ]; then
-          echo_error "A variável DEV_IMAGE não está definida no arquivo \"${project_env_path_file}\""
-          echo_warning "Essa variável é usada pelo Dockerfile para definir a imagem base a ser utilizada para construir o contêiner."
-
-          base_image=$(escolher_imagem_base)
-          if [ "$base_image" != "default" ]; then
-            dev_image=$(read_ini "$config_inifile" images "$base_image" | tr -d '\r')
-
-            script_dir=$(dirname "$config_inifile")
-            if [ "$tipo" = "dockerfile" ]; then
-              filename=$(read_ini "$config_inifile" "dockerfile" "$base_image" | tr -d '\r')
-              dockerfile_base_dev_sample="${script_dir}/dockerfiles/${filename}"
-            else
-              filename=$(read_ini "$config_inifile" "dockercompose" "$base_image" | tr -d '\r')
-              dockerfile_base_dev_sample="${script_dir}/${filename}"
-            fi
-
-            echo "base_image: $base_image"
-            echo "dev_image: $dev_image"
-            echo "dockerfile_base_dev_sample: $dockerfile_base_dev_sample"
-
-            if [ "$resposta" = "S" ]; then
-                echo ">>> cp ${dockerfile_base_dev_sample} ${project_dockerfile_sample}"
-                cp $dockerfile_base_dev_sample "${project_dockerfile_sample}"
-                echo_success "Arquivo $project_dockerfile_sample criado!"
-                sleep 0.5
-            fi
-          fi
-      fi
+      read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+      resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
     fi
 
-    # Testando a variável $dev_image novamente, pois ele pode ter sido definida no código acima.
-    if [ -z "${dev_image}" ]; then
-        echo_error "A variável DEV_IMAGE não está definida no arquivo '${project_env_path_file}'"
-        echo_info "Defina o valor dela em '${project_env_path_file}'"
-        exit 1
-    else
-        dev_image="${dev_image:-base_image}"
-        if [ "$LOGINFO" = "true" ]; then
-          echo_warning "Variável de ambiente \"DEV_IMAGE=${dev_image}\" definida."
-        fi
+    if [ "$resposta" = "S" ] && [ ! -f "$docker_file_or_compose_sample_path" ] && [ -z "$dev_image" ]; then
+      echo_error "A variável DEV_IMAGE não está definida no arquivo \"${env_file_path}\""
+      echo_warning "Essa variável é usada pelo Dockerfile para definir a imagem base a ser utilizada para construir o contêiner."
 
+      base_image=$(escolher_imagem_base)
+      if [ "$base_image" != "default" ]; then
+        dev_image=$(read_ini "$config_inifile" images "$base_image" | tr -d '\r')
+
+        script_dir=$(dirname "$config_inifile")
         if [ "$tipo" = "dockerfile" ]; then
-          if [ -f "$project_dockerfile_sample" ] && ! grep -q "${compose_project_name}-dev" "$project_dockerfile_sample"; then
-              # Substitui a primeira linha por "DEV_IMAGE"
-              # echo "--- Substituindo a 1a linha por \"ARG DEV_IMAGE=${dev_image}\" no arquivo $project_dockerfile_sample"
-              # sed -i "1s|.*|ARG DEV_IMAGE=${dev_image}|" "$project_dockerfile_sample"
-
-              # Substituir a linha que contém "ARG DEV_IMAGE=" pela nova definição
-              # echo "--- Substituindo a linha 'ARG DEV_IMAGE=' por 'ARG DEV_IMAGE=${dev_image}' no arquivo $project_dockerfile_sample"
-              # sed -i "s|^ARG DEV_IMAGE=.*|ARG DEV_IMAGE=${dev_image}|" "$project_dockerfile_sample"
-
-              echo "--- Substituindo a linha 'DEV_IMAGE=' por 'DEV_IMAGE=${dev_image}' no arquivo $project_env_path_file"
-              sed -i "s|^DEV_IMAGE=.*|DEV_IMAGE=${dev_image}|" "$project_env_path_file"
-
-              echo "--- Substituindo \"app-dev\" por \"${compose_project_name}-dev\" no arquivo '${project_dockerfile_sample}'"
-              sed -i "s|app-dev|${compose_project_name}-dev|g" "$project_dockerfile_sample"
-          fi
-        fi
-    fi
-
-    if [ ! -f "$project_dockerfile" ] && [ -f "$project_dockerfile_sample" ]; then
-        echo_warning "Detectamos que existe o arquivo $project_dockerfile_sample, porém não encontramos o arquivo $project_dockerfile."
-        if [ "$tipo" = "dockerfile" ]; then
-          echo_info "O arquivo '$project_dockerfile' contém instruções para construção de uma imagem Docker.
-          Deseja copiar o arquivo de modelo $project_dockerfile para o arquivo definitivo $project_dockerfile_sample?"
+          filename=$(read_ini "$config_inifile" "dockerfile" "$base_image" | tr -d '\r')
+          dockerfile_base_dev_sample="${script_dir}/dockerfiles/${filename}"
         else
-          echo_info "O arquivo \"$project_dockerfile\" é um arquivo de configuração usado pela ferramenta
-          \"Docker Compose\" para definir e gerenciar múltiplos contêineres \"Docker\" como um serviço.
-          Deseja copiar o arquivo de modelo $project_dockerfile para o arquivo definitivo ${project_dockerfile_sample}?"
+          filename=$(read_ini "$config_inifile" "dockercompose" "$base_image" | tr -d '\r')
+          dockerfile_base_dev_sample="${script_dir}/${filename}"
         fi
-        read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
-        resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
+
+        echo "base_image: $base_image"
+        echo "dev_image: $dev_image"
+        echo "dockerfile_base_dev_sample: $dockerfile_base_dev_sample"
 
         if [ "$resposta" = "S" ]; then
-          if [ "$tipo" != "dockerfile" ]; then
-            dockercompose_base=$(read_ini "$config_inifile" "dockercompose" "python_base" | tr -d '\r')
-
-            project_dockercompose_base_path="$(dirname $project_dockerfile)/${dockercompose_base}"
-
-            echo ">>> cp ${script_dir}/${dockercompose_base} $(dirname $project_dockerfile)/${dockercompose_base}"
-            cp "${script_dir}/${dockercompose_base}" "$project_dockercompose_base_path"
-
-            # Ajustando o path do build dockerfile do container "postgresql" (db)
-            dockerfile_postgresql=$(read_ini "$config_inifile" "dockerfile" "postgresql" | tr -d '\r')
-            echo "--- Substituindo \"dockerfiles/${dockerfile_postgresql}\" por \"${script_dir}/dockerfiles/${dockerfile_postgresql}\" no arquivo \"${project_dockercompose_base_path}\""
-            sed -i "s|dockerfile: dockerfiles/${dockerfile_postgresql}|dockerfile: ${script_dir}/dockerfiles/${dockerfile_postgresql}|" "$project_dockercompose_base_path"
-
-          fi
-          echo ">>> cp $project_dockerfile_sample $project_dockerfile"
-          cp "$project_dockerfile_sample" "$project_dockerfile"
+          echo ">>> cp ${dockerfile_base_dev_sample} ${docker_file_or_compose_sample_path}"
+          cp $dockerfile_base_dev_sample "${docker_file_or_compose_sample_path}"
+          echo_success "Arquivo $docker_file_or_compose_sample_path criado!"
+          sleep 0.5
         fi
+      fi
+    fi
+  fi
+  if  [ -z "$dev_image" ] && [ -f "$docker_file_path" ]; then
+    # Extrair o valor de DEV_IMAGE usando o caminho definido em $docker_file_or_compose_path
+    dev_image=$(grep -E "^ARG DEV_IMAGE=" "$docker_file_path" | cut -d '=' -f2)
+
+    # Remover espaços em branco ao redor (caso haja)
+    dev_image=$(echo "$dev_image" | xargs)
+  fi
+
+  # Testando a variável $dev_image novamente, pois ele pode ter sido definida no código acima.
+  if [ -z "$dev_image" ]; then
+    echo_error "A variável DEV_IMAGE não está definida no arquivo '${env_file_path}'"
+    echo_info "Defina o valor dela em '${env_file_path}'"
+    exit 1
+  else
+    if [ "$LOGINFO" = "true" ]; then
+      echo_warning "Variável de ambiente \"DEV_IMAGE=${dev_image}\" definida."
     fi
 
-    if [ ! -f "$project_dockerfile" ]; then
-        projeto_dir_path=$(dirname $project_env_path_file)
-        if [ "$tipo" = "dockerfile" ]; then
-          mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo na variável de ambiente \"DOCKERFILE\" no arquivo $project_env_path_file.
-          Exemplo: DOCKERFILE=${projeto_dir_path}/$(basename $project_dockerfile)"
-        else
-          mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo na variável de ambiente \"COMPOSES_FILES\" no arquivo $project_env_path_file.
+    # Extrair o valor de DEV_IMAGE do arquivo .env, definido em $env_file_path
+    env_dev_image=$(grep -E "^DEV_IMAGE=" "$env_file_path" | cut -d '=' -f2)
+
+    # Remover espaços em branco ao redor (caso haja)
+    env_dev_image=$(echo "$env_dev_image" | xargs)
+
+    # Atualiza o conteúdo da varíavel DEV_IMAGE no arquivo .env, se for diferente do conteúdo definido no Dockerfile
+    if [ "$dev_image" != "$env_dev_image" ]; then
+      dev_image="${dev_image:-base_image}"
+      echo "--- Substituindo a linha 'DEV_IMAGE=' por 'DEV_IMAGE=${dev_image}' no arquivo $env_file_path"
+      sed -i "s|^DEV_IMAGE=.*|DEV_IMAGE=${dev_image}|" "$env_file_path"
+    fi
+    if [ "$tipo" = "dockerfile" ]; then
+      if [ -f "$docker_file_or_compose_path" ] && ! grep -q "${compose_project_name}-dev" "$docker_file_or_compose_path"; then
+          echo "--- Substituindo \"app-dev\" por \"${compose_project_name}-dev\" no arquivo '${docker_file_or_compose_path}'"
+          sed -i "s|app-dev|${compose_project_name}-dev|g" "$docker_file_or_compose_path"
+      fi
+    fi
+  fi
+
+  if [ ! -f "$docker_file_or_compose_path" ]; then
+    projeto_dir_path=$(dirname $env_file_path)
+    if [ "$tipo" = "dockerfile" ]; then
+      mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo na variável de ambiente \"DOCKERFILE\" no arquivo $env_file_path.
+      Exemplo: DOCKERFILE=${projeto_dir_path}/$(basename $docker_file_or_compose_path)"
+    else
+      mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo na variável de ambiente \"COMPOSES_FILES\" no arquivo $env_file_path.
 Exemplo:
 COMPOSES_FILES=\"
 all:docker-compose.yml
 \"
-          "
-        fi
-          echo_error "Arquivo $project_dockerfile não encontrado. Impossível continuar!"
-          echo_warning "O arquivo ${nome} faz parte da arquitetura do \"service docker\".
-          Há três formas para resolver isso:
-          1. Gerar o arquivo $nome, para isso. Para isso, execute novamente o \"service docker\" (comando sdocker) e siga as orientações.
-          2. Criar o arquivo $project_dockerfile no diretório raiz $projeto_dir_path do seu projeto.
-          $mensagem_opcao"
-
-        exit 1
+      "
     fi
+
+    echo_error "Arquivo $docker_file_or_compose_path não encontrado. Impossível continuar!"
+    echo_warning "O arquivo ${nome} faz parte da arquitetura do \"service docker\".
+    Há três formas para resolver isso:
+    1. Gerar o arquivo \"$nome\". Para isso, execute novamente o \"service docker\" (comando sdocker) e siga as orientações.
+    2. Criar o arquivo $docker_file_or_compose_path no diretório raiz $projeto_dir_path do seu projeto.
+    $mensagem_opcao"
+
+    exit 1
+  fi
 }
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
   verifica_e_configura_dockerfile_project "dockerfile" \
       "$PROJECT_ENV_PATH_FILE" \
+      "$PROJECT_DOCKERFILE" \
       "$PROJECT_DOCKERFILE" \
       "$PROJECT_DOCKERFILE_SAMPLE" \
       "$COMPOSE_PROJECT_NAME" \
@@ -661,6 +676,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJA
 
   verifica_e_configura_dockerfile_project "docker-compose" \
       "$PROJECT_ENV_PATH_FILE" \
+      "$PROJECT_DOCKERFILE" \
       "$PROJECT_DOCKERCOMPOSE" \
       "$PROJECT_DOCKERCOMPOSE_SAMPLE" \
       "$COMPOSE_PROJECT_NAME" \
@@ -1039,7 +1055,17 @@ function verify_arguments() {
   if [ $arg_count -eq 1 ]; then
     if [ $_service_ok -eq 0 ]; then # serviço existe
       error_message_danger="Argumento [COMANDOS] não informado."
-      error_message_warning="Service $ARG_SERVICE\n\tComandos disponíveis: \n\t\tcomuns: ${all_commands_local[*]} \n\t\tespecíficos: ${specific_commands_local[*]}"
+      error_message_warning="Service $arg_service_name
+          Comandos disponíveis:
+              Comuns: ${all_commands_local[*]}
+              Específicos: ${specific_commands_local[*]}"
+      if [ "$arg_service_name" = "web" ]; then
+        error_message_warning="${error_message_warning}
+              o comando \"up\" possui os argumentos \"--force-deploy-all\" e \"--force-deploy-dev\":
+              --force-deploy-all: força a construção (build) de todas os estágios de imagens.
+              --force-deploy-dev: força a construção (build) apenas do estágio da imagem dev, arquivo Dockerfile.
+              Exemplo de uso: sdocker web up --force-deploy-all"
+      fi
     fi
     return 1 # falha
   fi
@@ -1068,6 +1094,9 @@ function imprimir_orientacao_uso() {
 
     Comando comuns: Comandos comuns a todos os serciços, exceto **all**
       up                        Sobe o serviço [NOME_SERVICO] em **foreground**
+                                Este comando possui os argumentos force-deploy-all e force-deploy-dev:
+                                - force-deploy-all: força a construção (build) de todas os estágios de imagens.
+                                - force-deploy-dev: força a construção (build) apenas do estágio da imagem dev, arquivo Dockerfile.
       down                      Para o serviço [NOME_SERVICO]
       restart                   Para e reinicar o serviço [NOME_SERVICO] em **background**
       exec                      Executar um comando usando o serviço [NOME_SERVICO] já subido antes, caso não tenha um container em execução, o comando é executado em em um novo container
@@ -1215,20 +1244,14 @@ function docker_build() {
   local user_name="$7"
   local user_uid="$8"
   local user_gid="$9"
-  local option_force="${10}"
-
-  local force="false"
-  if [ "$option_force" = "--force" ]; then
-      force="true"
-      shift  # Remove o parâmetro --force da lista de argumentos
-  fi
+  local force="${10}"
 
   dockerfile=$(get_filename_path "${scripty_dir}" "$inifile_path" "dockerfile" "$chave_ini")
 
   # Substitui "_" por "-"
   image="${chave_ini//_/-}"
 
-  if [ "$force" = "true" ] || ! verifica_imagem_docker "$image" "latest" ; then
+  if [ "$force" = true ] || ! verifica_imagem_docker "$image" "latest" ; then
     echo ">>>
     docker build
       --build-arg WORK_DIR=$work_dir
@@ -1239,7 +1262,6 @@ function docker_build() {
       -t $image
       -f ${scripty_dir}/dockerfiles/${dockerfile} .
     "
-
     docker build \
       --build-arg WORK_DIR="$work_dir" \
       --build-arg REQUIREMENTS_FILE="$requirements_file" \
@@ -1248,9 +1270,14 @@ function docker_build() {
       --build-arg USER_NAME="$user_name" \
       -t "$image" \
       -f "${scripty_dir}/dockerfiles/${dockerfile}" .
-  elif [ "$force" = "falses" ]; then
+    _return_command=$?
+    if [ "$_return_command" -ne 0 ]; then
+      echo_error "Falha a compilar a imagem \"$image\", veja o erro acima."
+      exit 1
+    fi
+  elif verifica_imagem_docker "$image" "latest"; then
       echo_warning "A imagem ${image}:latest já existe localmente.
-      Caso queria reconstruir novamente a imagem, use a opção \"--force\"."
+      Caso queria reconstruí-la novamente, use a opção \"--force\"."
   fi
 }
 
@@ -1304,14 +1331,19 @@ function docker_build_all() {
   local option=$1
   echo ">>> ${FUNCNAME[0]} $option"
 
-  build_python_base "$option"
-  build_python_base_user "$option"
-  build_python_nodejs_base "$option"
-
-  if [ "$force" = "false" ]; then
-    echo "Tecle [ENTER] para continuar"
-    read
+  local force=false
+  if echo "$_option" | grep -q -- "--force"; then
+    force=true
   fi
+
+  build_python_base $force
+  build_python_base_user $force
+  build_python_nodejs_base $force
+
+#  if [ "$force" = "false" ]; then
+#    echo "Tecle [ENTER] para continuar"
+#    read
+#  fi
 }
 
 #function check_option_d() {
@@ -1516,6 +1548,71 @@ function service_stop() {
   fi
 }
 
+function compose_service_db_get_host_port() {
+  local return_func
+
+  # Executa o comando dentro do contêiner
+  psql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "
+  export POSTGRES_USER='$POSTGRES_USER' &&
+  export POSTGRES_HOST='$POSTGRES_HOST' &&
+  export POSTGRES_PORT='$POSTGRES_PORT' &&
+  export POSTGRES_PASSWORD='$POSTGRES_PASSWORD' &&
+  source /scripts/utils.sh && get_host_port '\$POSTGRES_USER' '\$POSTGRES_HOST' '\$POSTGRES_PORT' '\%POSTGRES_PASSWORD' ")
+
+  return_func=$?
+  echo "$psql_output"
+  return $return_func
+}
+
+function compose_db_check_exists() {
+  local host
+  local port
+  local return_func
+
+  # Chamar a função para obter o host e a porta correta
+  psql_output=$(compose_service_db_get_host_port)
+  _return_func=$?
+  if [ $_return_func -eq 0 ]; then
+    read host port <<< $psql_output
+  else
+    echo_error "Não foi possível conectar ao banco de dados."
+    exit 1
+  fi
+
+  # Executa o comando dentro do contêiner
+  $COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "
+  source /scripts/utils.sh && check_db_exists $POSTGRES_USER $host $port $POSTGRES_PASSWORD $POSTGRES_DB"
+  return_func=$?
+  return $return_func
+}
+
+function django_migrations_exists() {
+  local host
+  local port
+  local return_func
+
+  psql_output=$(compose_service_db_get_host_port)
+  _return_func=$?
+
+  psql_output=$(echo "$psql_output" | xargs)  # remove espaços
+
+  # Se a função retornar com sucesso (_return_func igual a 1)
+  if [ $_return_func -eq 0 ]; then
+    # Extrai o host e a porta do output
+    read -r host port <<< "$psql_output"
+  fi
+
+  local _psql="psql -h $host -p $port -U $POSTGRES_USER -d $POSTGRES_DB"
+
+  # Definindo o comando psql para verificar a presença de migrações
+  local psql_cmd="$_psql -tc 'SELECT COUNT(*) > 0 FROM django_migrations;'"
+
+  psql_output=$($COMPOSE exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$SERVICE_DB_NAME" sh -c "$psql_cmd")
+  return_func=$?
+  echo "$psql_output"
+  return $return_func
+}
+
 function service_db_wait() {
   local _service_name=$SERVICE_DB_NAME
   local host
@@ -1523,28 +1620,17 @@ function service_db_wait() {
 
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
-  echo "--- Aguardando a base de dados ..."
-
- #  until $COMPOSE exec $_service_name pg_isready >/dev/null 2>&1 ; do
-#    error_output=$($COMPOSE logs --tail 1 $_service_name | tail -1)
-#    psql_output=$(echo "$psql_output" | xargs)  # remove espaços
-#    echo_warning "Container Postgres não disponível - aguarde..."
-#    if [ -n "$error_output" ]; then
-#      echo "ERROR: $E"
-#    fi
-#    sleep 1
-#  done
+  echo "--- Aguardando conexão com o servidor de banco de dados ..."
 
   # Define por padrão o retorno como falha
   _return_func=1
 
-  # Chamar a função para obter o host e a porta correta
-  echo ">>> [LOOP] $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"source /scripts/utils.sh && get_host_port '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '*********'\""
   # Loop until para continuar tentando até que _return_func seja igual a 1
   until [ $_return_func -eq 0 ]; do
-    echo_warning "Tentando conectar ao banco de dados..."
-    # Executa o comando dentro do contêiner
-    psql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "source /scripts/utils.sh && get_host_port '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '$POSTGRES_PASSWORD'")
+    echo_warning "Tentando conectar ao servidor de banco de dados, Aguarde!
+    Caso deseje monitorar o log do servidor de banco de dados,
+    abra um novo terminal e execute 'sdocker db logs'."
+    psql_output=$(compose_service_db_get_host_port)
     _return_func=$?
 
     # Se a função retornar com sucesso (_return_func igual a 1)
@@ -1552,22 +1638,90 @@ function service_db_wait() {
       # Extrai o host e a porta do output
       read -r host port <<< "$psql_output"
     fi
-
-    # Pequena pausa antes de tentar novamente (opcional)
+    # Pequena pausa antes de tentar novamente
     sleep 2
   done
+  echo_success "Servidor de banco de dados está aceitando conexões."
 
-  psql_command="psql -v ON_ERROR_STOP=1 --host=$host --port=$port --username=$POSTGRES_USER --dbname=$POSTGRES_DB"
+#  psql_command="psql -v ON_ERROR_STOP=1 --host=$host --port=$port --username=$POSTGRES_USER --dbname=$POSTGRES_DB"
+#
+#  echo ">>> [LOOP] $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"PGPASSWORD=******* $psql_command -tc 'SELECT 1;'\" 2>&1"
+#  until sql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "PGPASSWORD=$POSTGRES_PASSWORD $psql_command -tc 'SELECT 1;'" 2>&1); do
+#    psql_output=$(echo "$psql_output" | xargs)  # remove espaços
+#    echo "ERROR: $psql_output"
+#    echo_warning "Banco de dados está não disponível - aguardando... "
+#    sleep 2
+#  done
+#
+#  echo_success "Banco de dados está pronto e aceitando conexões."
+}
 
-  echo ">>> [LOOP] $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"PGPASSWORD=$POSTGRES_PASSWORD $psql_command -tc 'SELECT 1;'\" 2>&1"
-  until sql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "PGPASSWORD=$POSTGRES_PASSWORD $psql_command -tc 'SELECT 1;'" 2>&1); do
-    psql_output=$(echo "$psql_output" | xargs)  # remove espaços
-    echo "ERROR: $psql_output"
-    echo_warning "Banco de dados está não disponível - aguardando... "
-    sleep 2
+function database_wait() {
+  local _service_name=$SERVICE_DB_NAME
+  echo ">>> ${FUNCNAME[0]} "$_service_name" $_option"
+
+  service_db_wait
+
+  echo ""
+  echo "--- Verificando se o banco de dados \"$POSTGRES_DB\" existe ..."
+
+  if ! compose_db_check_exists; then
+    echo ""
+    echo_warning "Banco \"$POSTGRES_DB\" não existe."
+    echo "Deseja iniciar a restauração do dump agora?"
+    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+
+    if [ "$resposta" = "S" ]; then
+      database_db_restore "$SERVICE_DB_NAME"
+    else
+      echo_error "Impossível continuar, banco \"$POSTGRES_DB\" não encontrado.
+      Execute o comando \"sdocker db restore\" para restaurar o dump do banco.
+      Certifique que o arquivo de dump existe na pasta \"[root_projeto]\dump\""
+      exit 1
+    fi
+  else
+    echo_success "Banco de dados \"$POSTGRES_DB\" encontrado!"
+  fi
+
+  echo ""
+  echo "--- Verificando se a tabela \"django_migrations\" existe no banco \"$POSTGRES_DB\" ..."
+  psql_output=$(django_migrations_exists)
+  _return_func=$?
+  if [ $_return_func -eq 1 ]; then
+    echo ""
+    echo_warning "Banco \"$POSTGRES_DB\" existe, porém tabela \"django_migrations\" não existe!"
+    echo "Deseja iniciar a restauração do dump agora?"
+    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+
+    if [ "$resposta" = "S" ]; then
+      database_db_restore "$SERVICE_DB_NAME"
+    else
+      echo_error "Impossível continuar, banco \"$POSTGRES_DB\" continua vazio.
+      Execute o comando \"sdocker db restore\" para restaurar o dump do banco.
+      Certifique que o arquivo de dump existe na pasta \"[root_projeto]\dump\""
+      exit 1
+    fi
+  else
+    echo_success "Tabela \"django_migrations\" identificada!"
+  fi
+
+  echo ""
+  echo "--- Aguardando banco de dados \"$POSTGRES_DB\" ficar pronto ..."
+
+  psql_output=$(django_migrations_exists)
+  _return_func=$?
+  until [ $_return_func -eq 0 ]; do
+    echo_warning "O banco \"$POSTGRES_DB\" ainda não está pronto, Aguarde... "
+    psql_output=$(django_migrations_exists)
+    _return_func=$?
+    if [ $_return_func -eq 1 ]; then
+      echo "Detalhes do erro: $psql_output"
+    fi
+    sleep 5
   done
-
-  echo_success "Banco de dados está pronto e aceitando conexões."
+  echo_success "Banco de dados \"$POSTGRES_DB\" está pronto para uso."
 }
 
 function database_db_scp() {
@@ -1642,44 +1796,6 @@ function database_db_dump() {
   else
     echo_info "Backup realizado com sucesso!"
   fi
-}
-
-function database_wait() {
-  local _service_name=$SERVICE_DB_NAME
-  echo ">>> ${FUNCNAME[0]} "$_service_name" $_option"
-
-  service_db_wait
-
-  # Chamar a função para obter o host e a porta correta
-  echo ">>> $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"source /scripts/utils.sh && get_host_port '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '*********'\""
-  psql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "source /scripts/utils.sh && get_host_port '$POSTGRES_HOST' '$POSTGRES_PORT' '$POSTGRES_USER' '$POSTGRES_DB' '$POSTGRES_PASSWORD'")
-  _return_func=$?
-  if [ $_return_func -eq 0 ]; then
-    read host port <<< $psql_output
-  else
-    echo_error "Não foi possível conectar ao banco de dados."
-    exit 1
-  fi
-
-  local _psql="psql -h $host -p $port -U $POSTGRES_USER -d $POSTGRES_DB"
-
-  # Definindo o comando psql para verificar a presença de migrações
-  local psql_cmd="$_psql -tc 'SELECT COUNT(*) > 0 FROM django_migrations;'"
-
-  echo "--- Aguardando o banco de dados ficar pronto..."
-  # Loop até que a consulta retorne verdadeiro (ou seja, 't')
-  echo ">>> [LOOP] $COMPOSE exec -e PGPASSWORD=********* $SERVICE_DB_NAME  sh -c  $psql_cmd  | grep -q 't'"
-  psql_output=$($COMPOSE exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$SERVICE_DB_NAME" sh -c "$psql_cmd")
-  _return_func=$?
-  until [ $_return_func -eq 0 ]; do
-    echo_warning "O banco de dados ainda não está pronto, aguardando... "
-    psql_output=$($COMPOSE exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$SERVICE_DB_NAME" sh -c "$psql_cmd")
-    _return_func=$?
-    psql_output=$(echo "$psql_output" | xargs)  # remove espaços
-    echo "Detalhes do erro: $psql_output"
-    sleep 2
-  done
-  echo_success "Banco de dados $POSTGRES_DB está pronto para uso."
 }
 
 function database_db_restore() {
@@ -1962,6 +2078,14 @@ function service_up() {
 
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
+  local arg_build=""
+  if [ "$_option" = "--force-deploy-all" ]; then
+    docker_build_all $_option
+    _option="--build"
+  elif [ "$_option" = "--force-deploy-dev" ]; then
+    _option="--build"
+  fi
+
   # Obtem os serviços que dependem de $A_service_name
   declare -a _name_services
   dict_get_and_convert "$_service_name" "${DICT_SERVICES_DEPENDENCIES[*]}" _name_services
@@ -2069,7 +2193,7 @@ function service_build() {
 
   # Verifica se $2 é --force e filtra
   # o argumetno --force só é utilizado na função docker_build_all
-  if [ "$2" = "--force" ]; then
+  if echo "$force" | grep -q -- "--force"; then
       _option="${@:3}"  # Pega todos os argumentos a partir de $3, removendo $2
   else
       _option="${@:2}"  # Se $2 não for --force, pega todos os argumentos a partir de $2

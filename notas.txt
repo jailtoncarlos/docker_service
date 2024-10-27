@@ -142,3 +142,15 @@ Com array, podemos fazer as seguintes operações
 4. Substituição de Elementos Específicos: DICT_SERVICES_DEPENDENCIES[1]="new_value"
 5. Verificar o Número de Elementos: echo "Total de serviços: ${#DICT_SERVICES_DEPENDENCIES[@]}"
 6. Ordenação: IFS=$'\n' sorted=($(sort <<<"${DICT_SERVICES_DEPENDENCIES[*]}"))
+
+======================================================================================================
+Uso do caracter "\" antes de "$"
+A barra invertida (\) antes do símbolo $ no
+comando get_host_port '\$POSTGRES_HOST' '\$POSTGRES_PORT' '\$POSTGRES_USER' '\$POSTGRES_PASSWORD'
+em um script Bash indica ao shell para não interpretar imediatamente o valor da variável.
+Assim, ao invés de POSTGRES_HOST, por exemplo, ser substituído por seu valor atual, o shell passa
+o texto literal \$POSTGRES_HOST ao comando.
+Isso significa que as variáveis POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER e POSTGRES_PASSWORD
+serão avaliadas apenas quando forem passadas ao comando,
+permitindo que get_host_port receba esses nomes como argumentos literais (sem expansão)
+ao invés de seus valores atuais.

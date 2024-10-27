@@ -26,38 +26,41 @@ function configure_path_and_alias() {
     # Detectar o shell em uso
     local shell_user=$(basename "$SHELL")
     # Escolher o arquivo de configuração com base no shell
-    local arquivo_conf=""
+    local arquivo_bashrc=""
 
     if [ "$shell_user" = "bash" ]; then
-        arquivo_conf="$HOME/.bashrc"
+        arquivo_bashrc="$HOME/.bashrc"
     elif [ "$shell_user" = "zsh" ]; then
-        arquivo_conf="$HOME/.zshrc"
+        arquivo_bashrc="$HOME/.zshrc"
     else
         echo_error "Shell não suportado. Apenas bash e zsh são suportados."
         exit 1
     fi
 
     # Verificar se o diretório já está no PATH
-    if ! grep -Fxq "export PATH=\"\$PATH:${script_dir}\"" "$arquivo_conf"; then
+    if ! grep -Fxq "export PATH=\"\$PATH:${script_dir}\"" "$arquivo_bashrc"; then
         # Se não estiver, adicionar o diretório ao arquivo de configuração
-        echo ">>> export PATH=\"\$PATH:${script_dir}\"" >> "$arquivo_conf"
-        echo "O diretório $script_dir foi adicionado ao PATH no arquivo $arquivo_conf."
+        echo "export PATH=\"\$PATH:${script_dir}\"" >> "$arquivo_bashrc"
+        echo "O diretório $script_dir foi adicionado ao PATH no arquivo $arquivo_bashrc."
 
         # Recarregar o arquivo de configuração
-        source "$arquivo_conf"
+        source "$arquivo_bashrc"
     else
       echo_warning "O diretório $script_dir já está no PATH."
     fi
 
     # Verifica se o alias já está configurado
-    if ! grep -q "alias sdocker=" "$arquivo_conf"; then
+    if ! grep -q "alias sdocker=" "$arquivo_bashrc"; then
         echo "Criando alias para sdocker"
-        echo ">>> alias sdocker=\"${script_dir}/service.sh\"" >> "$arquivo_conf"
-        source "$arquivo_conf"
+        echo "alias sdocker=\"${script_dir}/service.sh\"" >> "$arquivo_bashrc"
+        source "$arquivo_bashrc"
         echo_info "Alias \"sdocker\" criado com sucesso."
     else
         echo_warning "Alias \"sdocker\" já está configurado."
     fi
+
+    source "$arquivo_bashrc"
+
     echo_success "Commando \"sdocker\" instalado."
     echo_info "Execute o \"sdocker\" no diretório raiz do seu projeto!"
 }

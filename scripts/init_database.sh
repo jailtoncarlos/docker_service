@@ -300,13 +300,27 @@ function criar_recriar_database() {
     pg_command="psql -v ON_ERROR_STOP=1 --host $host --port $postgres_port --username $postgres_user"
 
     # Executa o comando SQL para excluir e recriar o banco de dados
-    $pg_command <<-EOSQL
-    DROP DATABASE IF EXISTS $postgres_db;
-    CREATE DATABASE $postgres_db;
-    GRANT ALL PRIVILEGES ON DATABASE $postgres_db TO $postgres_user;
+    # Capturando erros
+    error_output=$(
+    $pg_command <<-EOSQL 2>&1
+        DROP DATABASE IF EXISTS $postgres_db;
+        CREATE DATABASE $postgres_db;
+        GRANT ALL PRIVILEGES ON DATABASE $postgres_db TO $postgres_user;
 EOSQL
+)
+  has_create_db=$?
 
-    check_command_status_on_error_exit "Falha ao excluir ou criar o banco de dados $postgres_db." "Banco de dados $postgres_db criado ou recriado com sucesso."
+  # Verificando se houve erro e exibindo a mensagem capturada
+  if [ $has_create_db -ne 0 ]; then
+    echo "$error_output"
+    # Verificando se a mensagem contém o texto específico
+    if echo "$error_output" | grep -q "other session using the database"; then
+        echo_warning "A mensagem indica que outra sessão está usando o banco de dados."
+        echo_info "Execute o comando \"sdocker all down\" para encerrar todos os serviços
+        em execução e em seguida retorne ao comando anterior."
+    fi
+  fi
+  check_command_status_on_error_exit $has_create_db "Falha ao excluir ou criar o banco de dados $postgres_db." "Banco de dados $postgres_db criado ou recriado com sucesso."
 }
 
 # Função para verificar se a extensão postgis está instalada e instalá-la caso não esteja
@@ -504,7 +518,7 @@ if [ ! -e "$SQLDUMP" ] && [ -e "$ZIPDUMP" ]; then
     descompactar_gzip_or_zip "$ZIPDUMP" "$DIR_DUMP" "$SQLDUMP"
     has_restore=$?  # Captura o código de retorno da função
   fi
-  check_command_status_on_error_exit "Falha na descompactação." "Descompactação concluída com sucesso!"
+  check_command_status_on_error_exit $has_restore "Falha na descompactação." "Descompactação concluída com sucesso!"
 fi
 
 if [ "$has_restore" -eq 1 ]; then

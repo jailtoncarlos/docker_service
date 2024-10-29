@@ -820,9 +820,9 @@ function check_command_status_on_error_exit() {
   # some_command
   # check_command_status "Falha ao executar o comando."
 
-  local exit_code=$?
-  local error_message="$1"
-  local success_message="$2"
+  local exit_code=$1
+  local error_message="$2"
+  local success_message="$3"
 
   if [ $exit_code -ne 0 ]; then
       # Exibe a mensagem de erro e interrompe a execução do script

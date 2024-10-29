@@ -30,7 +30,8 @@ check_and_load_scripts "install.sh"
 
 if ! verifica_instalacao; then
     echo_error "Utilitário docker service não instalado!
-    Execute o comando ./install.sh"
+    Acesse o diretório \"sdocker\" e
+    execute o comando ./install.sh"
     exit 1
 fi
 
@@ -79,12 +80,12 @@ PROJECT_ENV_PATH_FILE="${filename_path:-.env}"
 filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$LOCAL_INIFILE_PATH" "envfile_sample" "$PROJECT_NAME" )
 PROJECT_ENV_FILE_SAMPLE="${filename_path:-.env.sample}"
 
-_project_file=$(read_ini "$INIFILE_PATH" "envfile" "$PROJECT_NAME" | tr -d '\r')
+_project_file=$(read_ini "$LOCAL_INIFILE_PATH" "envfile" "$PROJECT_NAME" | tr -d '\r')
 if [ "$(dirname $PROJECT_ENV_FILE_SAMPLE)" != "$(dirname $PROJECT_ENV_PATH_FILE)" ] && [ -z "$PROJECT_ENV_PATH_FILE" ] ; then
   echo_error "O diretório do arquivo .env é diferente do arquivo $(basename $PROJECT_ENV_FILE_SAMPLE). Impossível continuar"
   echo_warning "Informe o path do arquivo .env nas configurações do \"sdocker\".
   Para isso, adicione a linha <<nome_projeto>>=<<path_arquivo_env_sample>> na seção \"[envfile]\" no arquivo de
-  configuração ${INIFILE_PATH}.
+  configuração ${LOCAL_INIFILE_PATH}.
   Exemplo: ${PROJECT_NAME}=$(dirname $PROJECT_ENV_FILE_SAMPLE)/.env"
   exit 1
 fi
@@ -454,32 +455,68 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   _return_func=$?  # Captura o valor de retorno da função
   read tipo_projeto mensagem <<< "$result"
 
-if [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
-    echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
-    echo_info "$mensagem"
-    if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
-      echo_info "Arquivo: .env: $PROJECT_ENV_PATH_FILE"
-    fi
-    if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
-      echo_info "Arquivo: .env sample: $PROJECT_ENV_FILE_SAMPLE"
-    fi
-    if [ -f "$PROJECT_DOCKERFILE" ]; then
-      echo_info "Arquivo: Dockerfile: $PROJECT_DOCKERFILE"
-    fi
-    if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
-      echo_info "Arquivo: Dockerfile sample: $PROJECT_DOCKERFILE_SAMPLE"
-    fi
-    if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
-      echo_info "Arquivo: docker-compose.yml: $PROJECT_DOCKERCOMPOSE"
-    fi
-    if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
-      echo_info "Arquivo: docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
-    fi
+
+  echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
+  echo_info "$mensagem"
+  if [ -f "$PROJECT_DOCKERFILE" ]; then
+    echo_info "Arquivo com instruções para criar imagem do contêiner da app: $PROJECT_DOCKERFILE"
+  fi
+  if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
+    echo_info "Arquivo: modelo Dockerfile: $PROJECT_DOCKERFILE_SAMPLE"
+  fi
+  if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
+    echo_info "Arquivo de definição que configura os serviços de um aplicativo Docker multi-container: $PROJECT_DOCKERCOMPOSE"
+  fi
+  if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
+    echo_info "Arquivo modelo docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
+  fi
+  if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
+    echo_info "Arquivo com definição de variáveis de ambiente utilizado pelo docker-compose: $PROJECT_ENV_PATH_FILE"
+  fi
+  if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
+    echo_info "Arquivo modelo .env: $PROJECT_ENV_FILE_SAMPLE"
   fi
 fi
+
 ##############################################################################
-### Tratamento para arquivo Dockerfile
+### Tratamento para os arquivos docker-compose-base.yml, docker-compose.yml e Dockerfile
 ##############################################################################
+function copy_docker_compose_base() {
+  local config_inifile="$1"
+  local docker_compose_path="$2"
+
+  dockercompose_base=$(read_ini "$config_inifile" "dockercompose" "python_base" | tr -d '\r')
+  project_dockercompose_base_path="$(dirname $docker_compose_path)/${dockercompose_base}"
+  if [ ! -f "$project_dockercompose_base_path" ] && [ -f "$project_dockercompose_base_path.sample" ]; then
+    echo ">>> cp $project_dockercompose_base_path.sample $project_dockercompose_base_path"
+    cp "$project_dockercompose_base_path.sample" "$project_dockercompose_base_path"
+  fi
+
+  # Extrair o path usando grep e sed
+  path_volume_script=$(grep -oP '(?<=- ).*(?=:/scripts/)' "$project_dockercompose_base_path")
+  path_script_dir=$SCRIPT_DIR/scripts/
+  if [ -f "$project_dockercompose_base_path" ] && [ "$path_volume_script" != "$path_script_dir" ]; then
+    echo "9999 path_volume_script=$path_volume_script"
+
+    dockerfile_postgresql=$(read_ini "$config_inifile" "dockerfile" "postgresql" | tr -d '\r')
+    dockerfile_postgresql_path=$SCRIPT_DIR/dockerfiles/${dockerfile_postgresql}
+    # Ajustando o path do build dockerfile do container "postgresql" (db)
+    # Substituir linhas contendo "Dockerfile-db" pelo novo texto
+    novo_texto="      dockerfile: ${dockerfile_postgresql_path}"
+    sed -i "/$dockerfile_postgresql/c\\$novo_texto" "$project_dockercompose_base_path"
+
+    # Ajustando o volume do container "postgresql" (db)
+    # Comando sed para substituir a linha inteira que contém ":/scripts/" pelo novo texto
+    novo_texto="      - ${path_script_dir}:/scripts/"
+    sed -i "/:\/scripts\//c\\$novo_texto" "$project_dockercompose_base_path"
+
+    # Ajustando o volume do container "postgresql" (db)
+    # Comando sed para substituir a linha inteira que contém "docker-entrypoint-initdb.d" pelo novo texto
+    novo_texto="      - ${path_script_dir}init_database.sh:/docker-entrypoint-initdb.d/init_database.sh"
+    sed -i "/docker-entrypoint-initdb.d/c\\$novo_texto" "$project_dockercompose_base_path"
+  fi
+}
+
 function verifica_e_configura_dockerfile_project() {
   local tipo="$1"  #dockerfile, docker-compose
   local env_file_path="$2"
@@ -519,10 +556,6 @@ function verifica_e_configura_dockerfile_project() {
     echo_warning "Arquivo $docker_file_or_compose_path não encontrado."
   fi
 
-  if [ "$revisado" = "true" ]; then
-    echo_warning "Variável REVISADO=true"
-  fi
-
   if [ ! -f "$docker_file_or_compose_path" ] && [ -f "$docker_file_or_compose_sample_path" ]; then
     echo_warning "Detectamos que existe o arquivo $docker_file_or_compose_sample_path, porém não encontramos o arquivo $docker_file_or_compose_path."
     if [ "$tipo" = "dockerfile" ]; then
@@ -539,17 +572,10 @@ function verifica_e_configura_dockerfile_project() {
     if [ "$resposta" = "S" ]; then
       if [ "$tipo" != "dockerfile" ]; then
         dockercompose_base=$(read_ini "$config_inifile" "dockercompose" "python_base" | tr -d '\r')
-
-        project_dockercompose_base_path="$(dirname $docker_file_or_compose_path)/${dockercompose_base}"
+        project_dockercompose_base_sample_path="$(dirname $docker_file_or_compose_path)/${dockercompose_base}.sample"
 
         echo ">>> cp ${script_dir}/${dockercompose_base} $(dirname $docker_file_or_compose_path)/${dockercompose_base}"
-        cp "${script_dir}/${dockercompose_base}" "$project_dockercompose_base_path"
-
-        # Ajustando o path do build dockerfile do container "postgresql" (db)
-        dockerfile_postgresql=$(read_ini "$config_inifile" "dockerfile" "postgresql" | tr -d '\r')
-        echo "--- Substituindo \"dockerfiles/${dockerfile_postgresql}\" por \"${script_dir}/dockerfiles/${dockerfile_postgresql}\" no arquivo \"${project_dockercompose_base_path}\""
-        sed -i "s|dockerfile: dockerfiles/${dockerfile_postgresql}|dockerfile: ${script_dir}/dockerfiles/${dockerfile_postgresql}|" "$project_dockercompose_base_path"
-
+        cp "${script_dir}/${dockercompose_base}" "$project_dockercompose_base_sample_path"
       fi
       echo ">>> cp $docker_file_or_compose_sample_path $docker_file_or_compose_path"
       cp "$docker_file_or_compose_sample_path" "$docker_file_or_compose_path"
@@ -615,7 +641,7 @@ function verifica_e_configura_dockerfile_project() {
     exit 1
   else
     if [ "$LOGINFO" = "true" ]; then
-      echo_warning "Variável de ambiente \"DEV_IMAGE=${dev_image}\" definida."
+      echo_info "Variável de ambiente \"DEV_IMAGE=${dev_image}\" definida."
     fi
 
     # Extrair o valor de DEV_IMAGE do arquivo .env, definido em $env_file_path
@@ -663,7 +689,7 @@ all:docker-compose.yml
   fi
 }
 
-if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   verifica_e_configura_dockerfile_project "dockerfile" \
       "$PROJECT_ENV_PATH_FILE" \
       "$PROJECT_DOCKERFILE" \
@@ -683,6 +709,9 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJA
       "$REVISADO" \
       "$DEV_IMAGE" \
       "$INIFILE_PATH"
+
+copy_docker_compose_base "$INIFILE_PATH" $PROJECT_DOCKERCOMPOSE
+
 fi
 ##############################################################################
 ### INSERINDO VARIÁVEIS COM VALORES PADRÃO NO INICÍO DO ARQUIVO ENV
@@ -784,12 +813,46 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" = "false" ]; then
   "
   echo_warning "Acima segue as principais variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
   echo_info "Antes de prosseguir, revise o conteúdo das variáveis apresentadas acima.
-  Copie a definição \"REVISADO=true\" e cole no arquivo $ENV_PATH_FILE para está mensagem não mais ser exibida.
-  "
+  Edite o arquivo \"$ENV_PATH_FILE\", copie e cole a definição \"REVISADO=true\" para está mensagem não mais ser exibida."
   echo "Tecle [ENTER] para continuar"
   read
   echo_info "Execute novamente o \"sdocker ${ARG_SERVICE} $ARG_COMMAND\"."
   exit 1
+fi
+
+if [ "$REVISADO" = "true" ]; then
+  echo_info "Variável REVISADO=true"
+fi
+
+########################## Validações de variáveis definidas no arquivo .env  ##########################
+if [ ! -d "$BASE_DIR" ]; then
+  echo_error "Caminho do diretório \"$BASE_DIR\" definido na variável \"BASE_DIR\" no arquivo $PROJECT_ENV_PATH_FILE NÃO existe.
+  Edite o arquivo e defina o caminho correto do diretório na variável"
+  exit 1
+fi
+
+if [ ! -d "$DATABASE_DUMP_DIR" ]; then
+  echo_error "Caminho do diretório \"$DATABASE_DUMP_DIR\" definido na variável \"DATABASE_DUMP_DIR\" no arquivo $PROJECT_ENV_PATH_FILE NÃO existe.
+  Edite o arquivo e defina o caminho correto do diretório na variável"
+  exit 1
+fi
+
+if [ "$USER_NAME" != $(id -un) ]; then
+  echo_warning "Usuário \"$USER_NAME\" definido na variável \"USER_NAME\" no arquivo $PROJECT_ENV_PATH_FILE
+  é diferente do usuário \"$(id -un)\" dos seu sistema operacional \"$(get_os_name)\"."
+
+  echo_info "Deseja que este script faça as devidas correçõe no arquivo \"$PROJECT_ENV_PATH_FILE\" ?"
+  read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+  resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+  if [ "$resposta" = "S" ]; then
+    # Substitui os valores das variáveis com os novos valores dinâmicos
+    sed -i "s/^USER_NAME=.*/USER_NAME=$(id -un)/" "$PROJECT_ENV_PATH_FILE"
+    sed -i "s/^USER_UID=.*/USER_UID=$(id -u)/" "$PROJECT_ENV_PATH_FILE"
+    sed -i "s/^USER_GID=.*/USER_GID=$(id -g)/" "$PROJECT_ENV_PATH_FILE"
+    echo_success "Correções realizadas com suceso."
+    echo "Tecle quaisquer tecla para continuar"
+    read
+  fi
 fi
 
 ############ Tratamento para recuperar os arquivos docker-compose ############
@@ -906,23 +969,40 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJA
     echo ">>> cp $BASE_DIR/$settings_local_file_sample $BASE_DIR/$settings_local_file"
     cp "$BASE_DIR/$settings_local_file_sample" "$BASE_DIR/$settings_local_file"
     sleep 0.5
-
-    elif [ ! -f "$BASE_DIR/$settings_local_file_sample" ]; then
-      echo ""
-      echo_error "Arquivo settings sample ($BASE_DIR/$settings_local_file_sample) não existe.!"
-      echo_info "Esse arquivo é o modelo de configurações mínimas necessárias para a aplicação funcionar."
-      echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE_SAMPLE\" em \"${PROJECT_ENV_PATH_FILE}\""
-      sair=1
-
-    elif [ ! -f "$BASE_DIR/$settings_local_file" ]; then
-      echo ""
-      echo_error "Arquivo $BASE_DIR/$settings_local_file não existe.!"
-      echo_info "Esse arquivo possui as configurações mínimas necessárias para a aplicação funcionar."
-      echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
-      sair=1
+  fi
+  if [ ! -f "$BASE_DIR/$settings_local_file_sample" ]; then
+    echo ""
+    echo_error "Arquivo settings sample ($BASE_DIR/$settings_local_file_sample) não existe.!"
+    echo_info "Esse arquivo é o modelo de configurações mínimas necessárias para a aplicação funcionar."
+    echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE_SAMPLE\" em \"${PROJECT_ENV_PATH_FILE}\""
+    sair=1
+  fi
+  if [ ! -f "$BASE_DIR/$settings_local_file" ]; then
+    echo ""
+    echo_error "Arquivo $BASE_DIR/$settings_local_file não existe.!"
+    echo_info "Esse arquivo possui as configurações mínimas necessárias para a aplicação funcionar."
+    echo_info "Defina o nome dele na variável \"SETTINGS_LOCAL_FILE\" em \"${PROJECT_ENV_PATH_FILE}\""
+    sair=1
   fi
 
   if [ $sair -eq 1 ]; then
+    # Verifica se a variável existe no arquivo e possui valor
+    if ! grep -q "^SETTINGS_LOCAL_FILE_SAMPLE=.*[^[:space:]]$" "$PROJECT_ENV_PATH_FILE"; then
+      sair=1
+      echo "Váriável \"SETTINGS_LOCAL_FILE_SAMPLE\" está vazia.
+      Essa variável define o nome do arquivo modelo de configuração (settings) local.
+      Em alguns projeto, o nome desse arquivo é \"local_settings_sample.py\".
+      Edite o arquivo \"${PROJECT_ENV_PATH_FILE}\" e defina o valor para essa variável."
+    fi
+   # Verifica se a variável existe no arquivo e possui valor
+    if ! grep -q "^SETTINGS_LOCAL_FILE=.*[^[:space:]]$" "$PROJECT_ENV_PATH_FILE"; then
+      sair=1
+      echo "Váriável \"SETTINGS_LOCAL_FILE\" está vazia.
+      Essa variável define o nome do arquivo modelo de configuração (settings) local.
+      Em alguns projeto, o nome desse arquivo é \"local_settings_sample.py\".
+      Edite o arquivo \"${PROJECT_ENV_PATH_FILE}\" e defina o valor para essa variável."
+    fi
+
     echo ""
     echo_error "Impossível continuar!"
     echo_error "Corriga os problemas relatados acima e então execute o comando novamente."
@@ -1457,7 +1537,7 @@ function service_web_exec() {
     echo ">>> $COMPOSE exec $_service_name $_option"
     $COMPOSE exec "$_service_name" $_option
   else
-    echo_warning "O serviço não está em execução"
+    echo_warning "O serviço $_service_name não está em execução"
   fi
 }
 
@@ -1498,7 +1578,7 @@ function service_shell() {
   echo ">>> ${FUNCNAME[0]} "$_service_name" $_option"
 
   if ! is_container_running "$_service_name"; then
-    echo_error "Container $_service_name não está em execução!"
+    echo_warning "Container $_service_name não está em execução!"
   fi
 
   if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
@@ -1520,7 +1600,7 @@ function service_logs() {
     $COMPOSE logs -f $_option
   else
     if ! is_container_running "$_service_name"; then
-      echo_error "Container $_service_name não está em execução!"
+      echo_warning "Container $_service_name não está em execução!"
     fi
     $COMPOSE logs -f $_option "$_service_name"
   fi
@@ -1696,6 +1776,12 @@ function database_wait() {
 
     if [ "$resposta" = "S" ]; then
       database_db_restore "$SERVICE_DB_NAME"
+      has_restore=$?
+      # Verifica se o código de saída do comando anterior foi executado com falha
+      if [ $has_restore -ne 0 ]; then
+        exit 1
+      fi
+
     else
       echo_error "Impossível continuar, banco \"$POSTGRES_DB\" continua vazio.
       Execute o comando \"sdocker db restore\" para restaurar o dump do banco.
@@ -1814,7 +1900,7 @@ function database_db_restore() {
 
   mkdir -p $DIR_DUMP
 
-  local _success=0
+  local _falha=1
   local _retorno_func=0
   echo "--- Iniciando processo de restauração do dump ..."
 
@@ -1824,7 +1910,7 @@ function database_db_restore() {
   _retorno_func=$?
   echo "Código de retorno:  $_retorno_func"
   if [ "$_retorno_func" -eq 0 ]; then
-    _success=1
+    _falha=0
     echo_success "A restauração foi realizada com sucesso!"
     echo ""
     echo "Deseja visualizar o arquivo de log gerado?"
@@ -1835,9 +1921,10 @@ function database_db_restore() {
       cat "$DIR_DUMP/restore.log"
     fi
   else
-    echo_error "Falha ao executar $PROJECT_DEV_DIR/scripts/init_database.sh"
+    #$PROJECT_DEV_DIR/scripts/init_database.sh
+    echo_error "Impossível restauarar o dump. Veja os erros acima."
   fi
-  return $_success
+  return $_falha
 }
 
 function _service_db_up() {

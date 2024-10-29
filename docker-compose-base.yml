@@ -95,8 +95,8 @@ services:
       PGDATA: /data/postgres
     entrypoint: ["/scripts/db_entrypoint.sh"]
     volumes:
-      - /home/jailton/workstation/docker_service/scripts:/scripts/
-      - /home/jailton/workstation/docker_service/scripts/init_database.sh:/docker-entrypoint-initdb.d/init_database.sh
+      - /home/user/workspace/sdocker/scripts:/scripts/
+      - /home/user/workspace/sdocker/scripts/init_database.sh:/docker-entrypoint-initdb.d/init_database.sh
       - ${DATABASE_DUMP_DIR:-dump}:/dump
       - db_data:/var/lib/postgresql/data
     cap_add:

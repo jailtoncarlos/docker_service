@@ -80,4 +80,4 @@ RUN wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_
       unzip chromedriver_linux64.zip &&\
       cp chromedriver /usr/local/bin/chromedriver \
 
-# docker build -t pyton-base:latest -f /home/jailton/workstation/docker_service/dockerfiles/Dockerfile-base-python  .
+# docker build -t pyton-base:latest -f /home/jailton/workstation/sdocker/dockerfiles/Dockerfile-base-python  .

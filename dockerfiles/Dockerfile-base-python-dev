@@ -10,35 +10,6 @@ ENV WORK_DIR=${WORK_DIR}
 ENV REQUIREMENTS_FILE=${REQUIREMENTS_FILE}
 ENV USER_NAME=${USER_NAME}
 
-# Google Chrome Stable: É o navegador completo, a versão estável do Google Chrome,
-# utilizada por usuários para navegação e, em automação, para realizar as ações simuladas
-# nos testes (como abrir páginas, clicar em links etc.).
-
-# ChromeDriver: É um binário que atua como intermediário entre ferramentas de automação (como Selenium)
-# e o navegador Chrome. Ele traduz os comandos de automação em ações reais no navegador.
-
-# Adição da chave GPG e do repositório do Google Chrome Stable
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list
-
-# Instalação de dependências
-# Instala a versão estável do Google Chrome Stable (navegador)
-RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends \
-    wget gnupg2 unzip google-chrome-stable \
-    && apt-get -y autoremove && apt-get clean \
-    && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/*
-
-# Instalação de dependências
-RUN apt-get update \
-      && apt-get -y install wget gnupg2 unzip
-
-# Baixa o chromedriver à versão do navegador Chrome e instala do ChromeDriver
-RUN wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip &&\
-      unzip chromedriver_linux64.zip &&\
-      cp chromedriver /usr/local/bin/chromedriver
-
-RUN pip install --upgrade pip
-
 # diciona o diretório especificado em $WORK_DIR como um "diretório seguro"
 # na configuração global do Git.
 RUN git config --global --add safe.directory $WORK_DIR
@@ -51,16 +22,17 @@ USER $USER_NAME
 WORKDIR $WORK_DIR
 
 # Adicionar os arquivos da aplicação
-COPY . $WORK_DIR
-
-USER root
+COPY --chown=$USER_NAME:$USER_NAME . $WORK_DIR
 
 # Install requirements
+# RUN pip install --no-cache-dir --user -r requirements/dev.txt
 # --mount=type=cache,target=/root/.cache/pip é uma opção avançada do Docker,
 # introduzida no BuildKit (um recurso mais recente do Docker para melhorar a
 # eficiência da construção de imagens). Ela cria um cache temporário durante
 # o processo de construção.
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r ${REQUIREMENTS_FILE}
+# RUN --mount=type=cache,target=/root/.cache/pip pip install -r ${REQUIREMENTS_FILE}
+# RUN --mount=type=cache,target=/opt/.cache pip install -r ${REQUIREMENTS_FILE}
+RUN --mount=type=cache,target=/opt/.cache pip install --user -r ${REQUIREMENTS_FILE}
 
 # Incluir o diretório $HOME/.local/bin no PATH
 ENV PATH="$PATH:$HOME/.local/bin"

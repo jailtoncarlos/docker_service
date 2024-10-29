@@ -28,6 +28,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     && sed -i -e's/ main/ main contrib non-free/g' /etc/apt/sources.list
 
 RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends \
+        wget gnupg2 unzip \
         pip python3-setuptools python3-wheel \
         locales vim openssh-server git build-essential \
         nginx cron libldap2-dev libsasl2-dev libpq-dev ghostscript \
@@ -54,5 +55,29 @@ RUN python -c "import nltk; nltk.download('punkt', download_dir='/var/www/nltk_d
 
 ADD https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.4/wkhtmltox-0.12.4_linux-generic-amd64.tar.xz /root/wkhtmltox.tar.xz
 RUN tar -xvf /root/wkhtmltox.tar.xz -C /root && mv /root/wkhtmltox/bin/wkhtmlto* /usr/bin && fc-cache -f -v
+
+
+# Google Chrome Stable: É o navegador completo, a versão estável do Google Chrome,
+# utilizada por usuários para navegação e, em automação, para realizar as ações simuladas
+# nos testes (como abrir páginas, clicar em links etc.).
+
+# ChromeDriver: É um binário que atua como intermediário entre ferramentas de automação (como Selenium)
+# e o navegador Chrome. Ele traduz os comandos de automação em ações reais no navegador.
+
+# Adição da chave GPG e do repositório do Google Chrome Stable
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list
+
+
+# Instala a versão estável do Google Chrome Stable (navegador)
+RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends \
+    google-chrome-stable \
+    && apt-get -y autoremove && apt-get clean \
+    && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/*
+
+# Baixa o chromedriver à versão do navegador Chrome e instala do ChromeDriver
+RUN wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip &&\
+      unzip chromedriver_linux64.zip &&\
+      cp chromedriver /usr/local/bin/chromedriver \
 
 # docker build -t pyton-base:latest -f /home/jailton/workstation/docker_service/dockerfiles/Dockerfile-base-python  .

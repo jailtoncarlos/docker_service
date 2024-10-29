@@ -1,68 +1,162 @@
-# See https://pre-commit.com for more information
-# See https://pre-commit.com/hooks.html for more hooks
-default_language_version:
-  # default language version for each language
-  python: python3
-fail_fast: true
+# Neste arquivo, foram definidos os seguintes hooks:
+#
+# codespell — Para detectar erros de digitação. Realiza a verificação tanto no código backend quanto no frontend.
+# ruff — O Ruff Linter é um linter Python extremamente rápido, projetado como um substituto direto para o Flake8 (e dezenas de plugins), isort, pydocstyle, pyupgrade, autoflake e mais. Ele verifica o código Python apenas no backend.
+#  Mantenha o ruff como a ferramenta principal de linting. Ele é rápido e pode lidar com grande parte das verificações de estilo e de erro.
+# ruff-format — O formatador Ruff é um formatador de código Python extremamente rápido, projetado para substituir o Black. Ele é usado apenas para código Python no backend.
+# mypy — O Mypy é um verificador de tipos estático para Python que visa combinar os benefícios da tipagem dinâmica (ou "duck typing") com a tipagem estática. É usado apenas para código Python no backend.
+# prettier — O Prettier é um formatador de código com suporte para TypeScript (e outras linguagens). É utilizado exclusivamente para formatação de código TypeScript no frontend.
+# eslint — O ESLint é uma ferramenta para identificar e relatar padrões encontrados em código ECMAScript/JavaScript, com o objetivo de tornar o código mais consistente e evitar bugs. É usado apenas para o código TypeScript no frontend.
+# django-tests — Um hook para executar testes unitários no backend com Django.
+# react-tests — Um hook para executar testes unitários no frontend com ReactJS.
+# black para formatação de linha: Configure o black para ajustar automaticamente as quebras de linha e formatação geral.
+# isort para ordenação avançada de imports: Embora o ruff possa corrigir a ordem dos imports, o isort permite um controle mais detalhado e é configurável para perfis como o black.
+
+
 repos:
-- repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v3.2.0
-  hooks:
-  - id: end-of-file-fixer
-  - id: check-json
-  - id: check-merge-conflict
-  - id: check-yaml
-  - id: check-added-large-files
-  - id: pretty-format-json
-    args: [--autofix,
-           --no-ensure-ascii]
-- repo: https://github.com/asottile/pyupgrade
-  rev: v2.38.2
-  hooks:
-  - id: pyupgrade
-    args: [--py37-plus]
-- repo: local
-  hooks:
-    - id: debug-statements
-      name: Check project for debug imports
-      entry: python pre-commit-bin/debug-statements.py
-      types:
-        - python
-      pass_filenames: true
-      language: system
-    - id: prints
-      name: Check project for prints in views, forms, models and tasks
-      entry: python pre-commit-bin/print-statements.py
-      types:
-        - python
-      pass_filenames: true
-      language: system
-    - id: black
-      name: The Python code formatter
-      language: system
-      entry: sh -c 'python pre-commit-bin/black.py'
-      types:
-        - python
-      pass_filenames: false
-    - id: pylint
-      name: The Python code linter
-      language: system
-      entry: sh -c 'python pre-commit-bin/pylint.py'
-      types:
-        - python
-      pass_filenames: false
-    - id: django-check
-      name: Check django project for potential problems
-      entry: sh -c 'python manage.py check'
-      types:
-        - python
-      pass_filenames: false
-      language: system
-    - id: django-check-migrations
-      name: Check django project for missing migrations.
-      entry: sh -c 'python manage.py makemigrations --dry-run --noinput --check'
-      files: models
-      types:
-        - python
-      pass_filenames: false
-      language: system
+  # Hooks padrão para verificações de arquivos e formatação básica
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+
+  # Verificação de ortografia com codespell
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        name: Spell Checker (backend and frontend)
+        files: ^(apps|djud|deploy|pre-commit-bin)/  # Aplica-se apenas aos diretórios backend e frontend
+        args: ["--exclude-file=frontend/package-lock.json", "--ignore-words=pre-commit-bin/ignore-words.txt"]
+        stages: [pre-commit]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.1
+    hooks:
+      - id: ruff
+        name: Ruff Linter (backend)
+        args: ["--fix"]
+        # "--select=F401,F841" Remove automaticamente os imports (F401 e variáveis (F841) não utilizadas
+        files: ^(apps|djud|deploy|pre-commit-bin)/  # Aplica-se apenas ao diretório backend
+        stages: [pre-commit]
+      - id: ruff-format
+        name: Ruff Formatter (backend)
+        files: ^(apps|djud|deploy|pre-commit-bin)/  # Aplica-se apenas ao diretório backend
+        stages: [pre-commit]
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0  # versão do Black
+    hooks:
+      - id: black
+        args: ["--line-length", "88"]
+        files: ^(apps|djud|deploy|pre-commit-bin)/  # Aplica-se apenas ao diretório backend
+        stages: [pre-commit]
+
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.13.2  # ou a versão mais recente
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+        stages: [pre-commit]
+
+  # Verificação de tipos com Mypy
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        name: Mypy Type Checker (backend)
+        args: ["--explicit-package-bases", "--config-file=mypy.ini"]  # Caminho para o arquivo mypy.ini
+        additional_dependencies:
+          [
+            django-stubs==5.1.0,
+            django-stubs-ext==5.1.0,
+            pydantic==2.9.2,
+            django-ninja==1.3.0,
+          ]
+        files: ^(apps|djud|deploy|pre-commit-bin)/  # Aplica-se apenas ao diretório backend
+        stages: [pre-commit]
+
+#  # Formatação de arquivos frontend com Prettier
+#  - repo: https://github.com/pre-commit/mirrors-prettier
+#    rev: "v4.0.0-alpha.8"
+#    hooks:
+#      - id: prettier
+#        name: Prettier Formatter (frontend)
+#        files: ^frontend/.*\.(js|jsx|ts|tsx|json|css|scss|md)$
+#        stages: [pre-commit]
+
+#  # Linting frontend com ESLint
+#  - repo: https://github.com/pre-commit/mirrors-eslint
+#    rev: v9.13.0
+#    hooks:
+#      - id: eslint
+#        name: ESLint Linter (frontend)
+#        entry: npx eslint --config frontend/eslint.config.js
+#        files: ^frontend/.*\.(js|jsx|ts|tsx)$
+#        types: [file]
+#        stages: [pre-commit]
+
+  # Hooks locais para verificações e testes de projeto específicos
+  - repo: local
+    hooks:
+      # Verificação de declarações de depuração (debug) no código
+      - id: debug-statements
+        name: Check project for debug imports
+        entry: python pre-commit-bin/debug_statements.py
+        types: [python]
+        pass_filenames: true
+        language: system
+
+      # Verificação de declarações de print em arquivos específicos
+      - id: prints
+        name: Check project for prints in views, forms, models and tasks
+        entry: python pre-commit-bin/print_statements.py
+        types: [python]
+        pass_filenames: true
+        language: system
+
+      # Linting de código Python com Pylint
+      - id: pylint
+        name: The Python code linter
+        language: system
+        entry: sh -c 'PYTHONPATH=. DJANGO_SETTINGS_MODULE=djud.settings python pre-commit-bin/pylint.py --rcfile=.pylintrc --load-plugins=pylint_django'
+        types: [python]
+        pass_filenames: false
+
+      # Verificação de problemas no projeto Django
+      - id: django-check
+        name: Check django project for potential problems
+        entry: sh -c 'python manage.py check'
+        types: [python]
+        pass_filenames: false
+        language: system
+
+      # Verificação de migrações faltantes no Django
+      - id: django-check-migrations
+        name: Check django project for missing migrations.
+        entry: sh -c 'python manage.py makemigrations --dry-run --noinput --check'
+        files: models
+        types: [python]
+        pass_filenames: false
+        language: system
+
+#      # Testes backend Django
+#      - id: django-tests
+#        name: Django Tests (backend)
+#        entry: bash -c "cd backend && python manage.py test"
+#        language: system
+#        pass_filenames: false
+#        stages: [pre-commit, pre-push]
+#
+#      # Testes frontend React (Jest)
+#      - id: react-tests
+#        name: React Tests (frontend)
+#        entry: bash -c "cd frontend && npm run test -- --watchAll=false --bail"
+#        language: system
+#        pass_filenames: false
+#        stages: [pre-commit, pre-push]

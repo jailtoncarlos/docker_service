@@ -82,7 +82,7 @@ PROJECT_ENV_FILE_SAMPLE="${filename_path:-.env.sample}"
 _project_file=$(read_ini "$INIFILE_PATH" "envfile" "$PROJECT_NAME" | tr -d '\r')
 if [ "$(dirname $PROJECT_ENV_FILE_SAMPLE)" != "$(dirname $PROJECT_ENV_PATH_FILE)" ] && [ -z "$PROJECT_ENV_PATH_FILE" ] ; then
   echo_error "O diretório do arquivo .env é diferente do arquivo $(basename $PROJECT_ENV_FILE_SAMPLE). Impossível continuar"
-  echo_warning "Informe o path do arquivo .env nas configurações do \"service docker\".
+  echo_warning "Informe o path do arquivo .env nas configurações do \"sdocker\".
   Para isso, adicione a linha <<nome_projeto>>=<<path_arquivo_env_sample>> na seção \"[envfile]\" no arquivo de
   configuração ${INIFILE_PATH}.
   Exemplo: ${PROJECT_NAME}=$(dirname $PROJECT_ENV_FILE_SAMPLE)/.env"
@@ -253,10 +253,10 @@ EOF
     # Verificar novamente se o arquivo de ambiente foi criado
     if [ ! -f "${project_env_file_sample}" ]; then
         echo_error "Arquivo ${project_env_file_sample} não encontrado. Impossível continuar!"
-        echo_warning "Ter um modelo de um arquivo \".env\" faz parte da arquitetura do  \"service docker\".
+        echo_warning "Ter um modelo de um arquivo \".env\" faz parte da arquitetura do  \"sdocker\".
         Há duas soluções para resolver isso:
         1. Adicionar o arquivo $project_env_file_sample no diretório raiz (${project_root_dir}) do seu projeto.
-        2. Informar o path do arquivo nas configurações do \"service docker\".
+        2. Informar o path do arquivo nas configurações do \"sdocker\".
         Para isso, adicione a linha <<nome_projeto>>=<<path_arquivo_env_sample>> na seção \"[envfile_sample]\" no arquivo de
         configuração ${config_inifile}.
         Exemplo: ${project_name}=${project_root_dir}/.env.dev.sample"
@@ -653,9 +653,9 @@ all:docker-compose.yml
     fi
 
     echo_error "Arquivo $docker_file_or_compose_path não encontrado. Impossível continuar!"
-    echo_warning "O arquivo ${nome} faz parte da arquitetura do \"service docker\".
+    echo_warning "O arquivo ${nome} faz parte da arquitetura do \"sdocker\".
     Há três formas para resolver isso:
-    1. Gerar o arquivo \"$nome\". Para isso, execute novamente o \"service docker\" (comando sdocker) e siga as orientações.
+    1. Gerar o arquivo \"$nome\". Para isso, execute novamente o \"sdocker\" (comando sdocker) e siga as orientações.
     2. Criar o arquivo $docker_file_or_compose_path no diretório raiz $projeto_dir_path do seu projeto.
     $mensagem_opcao"
 
@@ -788,7 +788,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" = "false" ]; then
   "
   echo "Tecle [ENTER] para continuar"
   read
-  echo_info "Execute novamente o \"service docker\"."
+  echo_info "Execute novamente o \"sdocker ${ARG_SERVICE} $ARG_COMMAND\"."
   exit 1
 fi
 
@@ -939,14 +939,13 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJA
   file_precommit_config="${PROJECT_DEV_DIR}/${PRE_COMMIT_CONFIG_FILE}"
   if [ ! -f "$file_precommit_config" ]; then
     echo ""
-    echo_error "Arquivo file_precommit_config não existe!"
+    echo_error "Arquivo $file_precommit_config não existe!"
     echo_info "O arquivo .pre-commit-config.yaml é a configuração central para o pre-commit, onde você define quais
     hooks serão executados antes dos commits no Git. Ele automatiza verificações e formatações, garantindo que o código
     esteja em conformidade com as regras definidas, melhorando a qualidade e consistência do projeto.
 
     Deseja que este script copie um arquivo pré-configurado para seu projeto?"
     read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
-
     resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
     if [ "$resposta" = "S" ]; then
       echo ">>> cp ${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE} $file_precommit_config"
@@ -2029,6 +2028,13 @@ function _service_web_up() {
   local _option="$*"
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
+  if [ "$_option" = "--force-deploy-all" ]; then
+    docker_build_all $_option
+    _option="--build"
+  elif [ "$_option" = "--force-deploy-dev" ]; then
+    _option="--build"
+  fi
+
   database_wait
 
   echo ">>> $COMPOSE up $_option $_service_name"
@@ -2055,12 +2061,20 @@ function _service_up() {
   local _nservice
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
+  local arg_build=""
+  if echo "$_option" | grep -q -- "--force"; then
+    read _option arg_build <<< $_option
+  fi
+
   if [ "$_service_name" = "all" ]; then
     _service_all_up" $_option"
 #    $COMPOSE up $_option
   elif [ "$_service_name" = "$SERVICE_DB_NAME" ]; then
     _service_db_up "$_service_name" $_option
   elif [ "$_service_name" = "$SERVICE_WEB_NAME" ]; then
+    if [ -n "$arg_build" ]; then
+      _option=$arg_build
+    fi
     _service_web_up "$_service_name" $_option
   else
     _nservice=$(get_server_name ${_service_name})
@@ -2077,14 +2091,6 @@ function service_up() {
 #  local _name_services=($(string_to_array $(dict_get "$ARG_SERVICE" "${DICT_SERVICES_DEPENDENCIES[*]}")))
 
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
-
-  local arg_build=""
-  if [ "$_option" = "--force-deploy-all" ]; then
-    docker_build_all $_option
-    _option="--build"
-  elif [ "$_option" = "--force-deploy-dev" ]; then
-    _option="--build"
-  fi
 
   # Obtem os serviços que dependem de $A_service_name
   declare -a _name_services

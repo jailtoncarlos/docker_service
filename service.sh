@@ -233,6 +233,7 @@ SERVICES_COMMANDS="
 all:deploy;undeploy;redeploy;status;restart;logs;up;down
 web:makemigrations;manage;migrate;shell_plus;debug;build;git;pre-commit;test_behave
 db:psql;wait;dump;restore;copy;build
+node:
 pgadmin:
 redis:
 selenium_grid:

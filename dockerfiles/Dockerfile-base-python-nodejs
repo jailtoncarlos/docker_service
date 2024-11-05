@@ -1,12 +1,29 @@
-# terceiro estágio: começa da imagem base anterior e adiciona Node.js
+# Define uma imagem base chamada python-nodejs-base que começa a partir de uma
+# imagem Python configurada
+# Essa imagem inclui Python e está configurada para um usuário específico
 ARG PYTHON_NODEJS_BASE_IMAGE=python-base-user:latest
 FROM ${PYTHON_NODEJS_BASE_IMAGE} AS python-nodejs-base
 
-# Instalar Node.js e Yarn de forma mais simples
+# Instala Node.js e Yarn
+# 1. `curl -fsSL https://deb.nodesource.com/setup_22.x | bash -`:
+#Baixa o script de configuração do repositório NodeSource para instalar
+# Node.js na versão 22.x e executa o script para adicionar o repositório.
+# 2. `apt-get install -y nodejs`: Instala o Node.js
+# a partir do repositório adicionado.
+# 3. `corepack enable yarn`: Ativa o Yarn  usando o
+# Corepack (uma ferramenta integrada ao Node.js para gerenciar pacotes).
+# 4. `apt-get -y autoremove && apt-get clean`: Remove pacotes desnecessários
+# para liberar espaço.
+# 5. `rm -rf /var/cache/apt/* /var/lib/apt/lists/*`: Limpa o cache do `apt`
+# para reduzir o tamanho final da imagem.
+# rm -rf garantem que pacotes e caches desnecessários sejam removidos,
+# otimizando o tamanho da imagem.
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     corepack enable yarn && \
     apt-get -y autoremove && apt-get clean && \
     rm -rf /var/cache/apt/* /var/lib/apt/lists/*
 
-# docker build -f /home/jailton/workstation/sdocker/dockerfiles/Dockerfile-base-python-nodejs  -t python-nodejs-base:latest .
+
+# Comando para construir a imagem:
+# docker build -f /home/jailton/workstation/sdocker/dockerfiles/Dockerfile-base-python-nodejs -t python-nodejs-base:latest .

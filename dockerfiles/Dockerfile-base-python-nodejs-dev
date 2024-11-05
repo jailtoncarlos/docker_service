@@ -1,42 +1,67 @@
+# Define uma imagem base para desenvolvimento que já possui Python e
+# Node.js instalados
 ARG DEV_IMAGE=python-nodejs-base:latest
 FROM ${DEV_IMAGE} AS app-dev
 
+# Define argumentos de construção que podem ser configurados
+# ao construir a imagem
+# Diretório de trabalho no contêiner
 ARG WORK_DIR
+# Arquivo de requisitos Python a ser usado
 ARG REQUIREMENTS_FILE
+# Nome do usuário padrão para o contêiner
 ARG USER_NAME
 
-# Persistir as variáveis como ambiente no runtime
+# Define variáveis de ambiente para persistir as configurações no
+# contêiner em runtime
+# Isso permite que esses valores sejam acessados pelos
+# processos no contêiner
 ENV WORK_DIR=${WORK_DIR}
 ENV REQUIREMENTS_FILE=${REQUIREMENTS_FILE}
 ENV USER_NAME=${USER_NAME}
 
-# diciona o diretório especificado em $WORK_DIR como um "diretório seguro"
-# na configuração global do Git.
+# Marca o diretório de trabalho especificado em $WORK_DIR como
+# um "diretório seguro" para o Git
+# Isso evita mensagens de aviso do Git ao executar comandos nesse diretório
 RUN git config --global --add safe.directory $WORK_DIR
 
-# Defina o usuário padrão para o container
+# Define o usuário padrão para o contêiner como $USER_NAME
+# Garante que as operações no contêiner sejam executadas
+# com as permissões do usuário especificado
 USER $USER_NAME
 
-# Definir o diretório de trabalho usando o argumento passado
-# diretório padrão onde o CMD será executado
+# Define o diretório de trabalho como $WORK_DIR
+# Este será o diretório padrão onde o comando CMD será executado
 WORKDIR $WORK_DIR
 
-# Adicionar os arquivos da aplicação
+# Copia os arquivos da aplicação para o diretório de trabalho do contêiner
+# Especifica o usuário $USER_NAME para garantir que ele tenha
+# as permissões corretas
 COPY --chown=$USER_NAME:$USER_NAME . $WORK_DIR
 
-# Install requirements
-# RUN pip install --no-cache-dir --user -r requirements/dev.txt
-# --mount=type=cache,target=/root/.cache/pip é uma opção avançada do Docker,
-# introduzida no BuildKit (um recurso mais recente do Docker para melhorar a
-# eficiência da construção de imagens). Ela cria um cache temporário durante
-# o processo de construção.
-# RUN --mount=type=cache,target=/root/.cache/pip pip install -r ${REQUIREMENTS_FILE}
-# RUN --mount=type=cache,target=/opt/.cache pip install -r ${REQUIREMENTS_FILE}
-RUN --mount=type=cache,target=/opt/.cache pip install --user -r ${REQUIREMENTS_FILE}
+# Instala as dependências Python listadas no arquivo
+# especificado em ${REQUIREMENTS_FILE}
+# Utiliza cache de pip para otimizar a instalação e reduzir o tempo em
+# futuras construções
+# A opção --user instala os pacotes no diretório do usuário ($HOME/.local/)
+RUN --mount=type=cache,target=/opt/.cache pip install \
+    --user -r ${REQUIREMENTS_FILE}
 
-# Incluir o diretório $HOME/.local/bin no PATH
+# Instala django-extensions para habilitar o uso do runserver_plus
+RUN pip install django-extensions
+
+# Inclui o diretório $HOME/.local/bin no PATH do contêiner
+# Isso permite que os pacotes Python instalados com --user sejam
+# acessíveis no PATH global
 ENV PATH="$PATH:$HOME/.local/bin"
 
+# Redefine o diretório de trabalho para $WORK_DIR, garantindo que o
+# comando CMD será executado aqui
 WORKDIR $WORK_DIR
 
+# Define o comando padrão (CMD) para o contêiner
+# Esse comando exibe uma mensagem e entra em um modo de
+# espera infinito (sleep infinity),
+# o que é útil em contêineres de desenvolvimento que precisam ficar
+# ativos para depuração
 CMD ["/bin/sh", "-c", "echo 'Starting dev container'; sleep infinity"]

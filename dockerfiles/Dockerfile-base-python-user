@@ -1,43 +1,61 @@
+# Define uma imagem base Python com configurações de usuário
 ARG PYTHON_BASE_USER_IMAGE=python-base:latest
 FROM ${PYTHON_BASE_USER_IMAGE} AS python-base-user
 
-ARG USER_UID
-ARG USER_GID
-ARG USER_NAME
+# Argumentos para definir o ID de usuário, ID de grupo e nome do usuário no contêiner
+ARG USER_UID               # ID de usuário personalizado para o novo usuário
+ARG USER_GID               # ID de grupo personalizado para o novo usuário
+ARG USER_NAME              # Nome do usuário a ser criado no contêiner
 
+# Define variáveis de ambiente para persistir as configurações de ID e nome de usuário
 ENV USER_UID=${USER_UID}
 ENV USER_GID=${USER_GID}
 ENV USER_NAME=${USER_NAME}
 
+# Muda o usuário atual para `root` para realizar operações administrativas
 USER root
 
-# Instala as dependências necessárias
-RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends \
+# Instala pacotes essenciais, incluindo OpenSSH e Sudo
+# - `openssh-server` e `openssh-client`: necessários para conexões SSH
+# - `procps`: fornece comandos como `ps` e `top` para monitoramento de processos
+# - `sudo`: permite a elevação de permissões para o usuário
+RUN apt-get update && apt-get install -yqq \
+    --fix-missing --no-install-recommends \
     openssh-server openssh-client procps sudo \
     && apt-get -y autoremove && apt-get clean \
     && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/*
 
-# Cria o grupo e o usuário com base nos USER_UID e USER_GID fornecidos
+# Cria um novo grupo e um usuário com base nos IDs fornecidos (USER_UID e USER_GID)
+# Configura o shell padrão do usuário como `/bin/bash`
 RUN groupadd -g "${USER_GID}" $USER_NAME && \
-    useradd -u "${USER_UID}" -g "${USER_GID}" -m --no-log-init -s /bin/bash $USER_NAME
+    useradd -u "${USER_UID}" -g "${USER_GID}" \
+    -m --no-log-init -s /bin/bash $USER_NAME
 
-# Adicionar o diretório /home/USER_NAME/.local/bin ao PATH
+# Adiciona o diretório `$HOME/.local/bin` ao PATH para facilitar o acesso a \
+    pacotes Python instalados localmente
 ENV PATH="$PATH:/home/${USER_NAME}/.local/bin"
 
-# Adicionando usuário ao grupo root
+# Adiciona o usuário criado ao grupo root, permitindo acesso elevado
 RUN usermod -G root $USER_NAME
 
-# [Opcional] Adiciona suporte para Sudo.
+# Configurações opcionais para dar suporte ao Sudo:
+# - Adiciona uma entrada no `/etc/sudoers.d/` para permitir que o usuário
+# execute sudo sem senha
+# - Define uma senha inicial para o usuário
 RUN echo $USER_NAME ALL=\(ALL\) NOPASSWD:ALL > /etc/sudoers.d/$USER_NAME && \
     chmod 0440 /etc/sudoers.d/$USER_NAME && \
     echo "$USER_NAME:mudar@123" | chpasswd
 
-# Se o $USER_NAME == "customuser", gera uma nova chave ssh.
+# Gera uma nova chave SSH para o usuário caso o nome do usuário seja `customuser`
+# Isso é útil para identificar usuários com uma chave SSH personalizada
 RUN if [ "$USER_NAME" = "customuser" ]; then \
-        ssh-keygen -t ed25519 -C "Usuário $USER_NAME" -f /home/$USER_NAME/.ssh/id_ed25519_$USER_NAME -N ""; \
+        ssh-keygen -t ed25519 -C "Usuário $USER_NAME" \
+                   -f /home/$USER_NAME/.ssh/id_ed25519_$USER_NAME \ -N ""; \
     fi
-
+# Atualiza o pip para a versão mais recente
 RUN python -m pip install --upgrade pip
 
-# Instalar o pre-commit (caso não esteja no requirements.txt)
+# Instala o `pre-commit` globalmente para configurar e verificar convenções
+# de código
+# Caso o `pre-commit` não esteja especificado no arquivo `requirements.txt`
 RUN pip install pre-commit

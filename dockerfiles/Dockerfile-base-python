@@ -1,32 +1,36 @@
+# Define uma imagem base do Python com Debian Slim Bullseye para otimizar a leveza da imagem
 ARG PYTHON_BASE_IMAGE=python:3.12-slim-bullseye
 FROM ${PYTHON_BASE_IMAGE} AS python-base
 
-# Env variables
-# Desabilita o buffering de saída padrão do Python.
-# Garante que a saída do Python (como impressões no console) seja imediatamente enviada
-# para o terminal ou logs, sem ficar retida no buffer.
-# Isso é particularmente útil em ambientes de contêiner onde é importante ver os logs em tempo real.
+# Variáveis de ambiente
+# Desabilita o buffering de saída padrão do Python para que logs sejam exibidos em tempo real
 ENV PYTHONUNBUFFERED 1
 
-# Impede o Python de gerar arquivos .pyc, que são os bytecodes compilados do Python, em diretórios de origem.
-# Isso ajuda a manter os diretórios de código mais limpos e evita a criação de arquivos desnecessários
-# em um ambiente de contêiner, onde o armazenamento em disco pode ser mais limitado
-# e a limpeza de arquivos indesejados pode ser preferível.
+# Impede o Python de gerar arquivos .pyc (bytecode) nos diretórios de origem
 ENV PYTHONDONTWRITEBYTECODE 1
 
+# Define o diretório de instalação do Poetry
 ENV POETRY_HOME=/usr/local
+
+# Configuração para que o sistema não peça interação durante a instalação
 ENV DEBIAN_FRONTEND noninteractive
+
+# Configura a localidade e fuso horário
 ENV LANG pt_BR.UTF-8
 ENV LANGUAGE pt_BR:pt
 ENV LC_ALL pt_BR.UTF-8
 ENV TZ="America/Fortaleza"
+
+# Define temporariamente o idioma como C.UTF-8
 RUN export LANG=C.UTF-8
 
+# Otimiza a instalação de pacotes ao usar caches para listas de pacotes
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     --mount=target=/var/cache/apt,type=cache,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean \
-    && sed -i -e's/ main/ main contrib non-free/g' /etc/apt/sources.list
+    && sed -i -e 's/ main/ main contrib non-free/g' /etc/apt/sources.list
 
+# Instalação de pacotes essenciais e dependências do sistema
 RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends \
         wget gnupg2 unzip \
         pip python3-setuptools python3-wheel \
@@ -43,19 +47,29 @@ RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends
     && apt-get -y autoremove && apt-get clean \
     && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/*
 
+# Atualiza o pip, instala pipenv e uv, além de Poetry para gerenciamento de pacotes
+RUN pip install -U pip pipenv uv && \
+    curl -sSL https://install.python-poetry.org | python -
 
-RUN  pip install -U pip pipenv uv && \
-  curl -sSL https://install.python-poetry.org | python -
-
+# Configura a localidade para pt_BR.UTF-8
 RUN echo "pt_BR.UTF-8 UTF-8" >> /etc/locale.gen
 RUN locale-gen pt_BR.UTF-8
+
+# Cria um link simbólico para o Ghostscript, necessário para manipulação de PDFs
 RUN ln -s /usr/bin/gs /usr/local/bin/gs
+
+# Instala o NLTK e baixa pacotes de dados (punkt e stopwords) para processamento de linguagem
 RUN --mount=type=cache,target=/root/.cache/pip pip install nltk==3.8
-RUN python -c "import nltk; nltk.download('punkt', download_dir='/var/www/nltk_data'); nltk.download('stopwords', download_dir='/var/www/nltk_data'); "
+RUN python -c "import nltk; \
+    nltk.download('punkt', download_dir='/var/www/nltk_data'); \
+    nltk.download('stopwords', download_dir='/var/www/nltk_data');"
 
+# Adiciona o wkhtmltopdf para conversão de HTML para PDF
 ADD https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.4/wkhtmltox-0.12.4_linux-generic-amd64.tar.xz /root/wkhtmltox.tar.xz
-RUN tar -xvf /root/wkhtmltox.tar.xz -C /root && mv /root/wkhtmltox/bin/wkhtmlto* /usr/bin && fc-cache -f -v
-
+# Extrai o wkhtmltopdf, move os executáveis para /usr/bin e atualiza o cache de fontes
+RUN tar -xvf /root/wkhtmltox.tar.xz -C /root && \
+    mv /root/wkhtmltox/bin/wkhtmlto* /usr/bin && \
+    fc-cache -f -v
 
 # Google Chrome Stable: É o navegador completo, a versão estável do Google Chrome,
 # utilizada por usuários para navegação e, em automação, para realizar as ações simuladas
@@ -64,20 +78,27 @@ RUN tar -xvf /root/wkhtmltox.tar.xz -C /root && mv /root/wkhtmltox/bin/wkhtmlto*
 # ChromeDriver: É um binário que atua como intermediário entre ferramentas de automação (como Selenium)
 # e o navegador Chrome. Ele traduz os comandos de automação em ações reais no navegador.
 
-# Adição da chave GPG e do repositório do Google Chrome Stable
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list
+# Instala o Google Chrome Stable e configura o ChromeDriver para
+# testes automatizados
+# Adiciona a chave GPG do Google e o repositório para o Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | \
+    apt-key add - && \
+    echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> \
+    /etc/apt/sources.list.d/google.list
 
-
-# Instala a versão estável do Google Chrome Stable (navegador)
-RUN apt-get update && apt-get install -yqq --fix-missing --no-install-recommends \
+# Instala o navegador Google Chrome Stable
+RUN apt-get update && apt-get install -yqq \
+    --fix-missing --no-install-recommends \
     google-chrome-stable \
     && apt-get -y autoremove && apt-get clean \
-    && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/* \
 
-# Baixa o chromedriver à versão do navegador Chrome e instala do ChromeDriver
-RUN wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip &&\
-      unzip chromedriver_linux64.zip &&\
-      cp chromedriver /usr/local/bin/chromedriver \
+# Baixa e instala o ChromeDriver (navegador Google Chrome Stable)
+# para  testes automatizados
+# descompactando para /usr/local/bin
+RUN wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip && \
+    unzip chromedriver_linux64.zip && \
+    cp chromedriver /usr/local/bin/chromedriver
 
-# docker build -t pyton-base:latest -f /home/jailton/workstation/sdocker/dockerfiles/Dockerfile-base-python  .
+# Docker build example
+# docker build -t python-base:latest -f /home/jailton/workstation/sdocker/dockerfiles/Dockerfile-base-python .

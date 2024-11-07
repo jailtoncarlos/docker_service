@@ -1,11 +1,17 @@
+# Configura a imagem básica com um ambiente Python e um usuário configurável.
+# É a base para outras imagens.
+
 # Define uma imagem base Python com configurações de usuário
 ARG PYTHON_BASE_USER_IMAGE=python-base:latest
 FROM ${PYTHON_BASE_USER_IMAGE} AS python-base-user
 
 # Argumentos para definir o ID de usuário, ID de grupo e nome do usuário no contêiner
-ARG USER_UID               # ID de usuário personalizado para o novo usuário
-ARG USER_GID               # ID de grupo personalizado para o novo usuário
-ARG USER_NAME              # Nome do usuário a ser criado no contêiner
+# ID de usuário personalizado para o novo usuário
+ARG USER_UID
+# ID de grupo personalizado para o novo usuário
+ARG USER_GID
+# Nome do usuário a ser criado no contêiner
+ARG USER_NAME
 
 # Define variáveis de ambiente para persistir as configurações de ID e nome de usuário
 ENV USER_UID=${USER_UID}
@@ -27,16 +33,15 @@ RUN apt-get update && apt-get install -yqq \
 
 # Cria um novo grupo e um usuário com base nos IDs fornecidos (USER_UID e USER_GID)
 # Configura o shell padrão do usuário como `/bin/bash`
+# Adiciona o usuário criado ao grupo root, permitindo acesso elevado
 RUN groupadd -g "${USER_GID}" $USER_NAME && \
     useradd -u "${USER_UID}" -g "${USER_GID}" \
-    -m --no-log-init -s /bin/bash $USER_NAME
+    -m --no-log-init -s /bin/bash $USER_NAME \
+    && usermod -G root $USER_NAME
 
-# Adiciona o diretório `$HOME/.local/bin` ao PATH para facilitar o acesso a \
-    pacotes Python instalados localmente
+# Adiciona o diretório `$HOME/.local/bin` ao PATH para facilitar o acesso a
+# pacotes Python instalados localmente
 ENV PATH="$PATH:/home/${USER_NAME}/.local/bin"
-
-# Adiciona o usuário criado ao grupo root, permitindo acesso elevado
-RUN usermod -G root $USER_NAME
 
 # Configurações opcionais para dar suporte ao Sudo:
 # - Adiciona uma entrada no `/etc/sudoers.d/` para permitir que o usuário
@@ -46,16 +51,14 @@ RUN echo $USER_NAME ALL=\(ALL\) NOPASSWD:ALL > /etc/sudoers.d/$USER_NAME && \
     chmod 0440 /etc/sudoers.d/$USER_NAME && \
     echo "$USER_NAME:mudar@123" | chpasswd
 
-# Gera uma nova chave SSH para o usuário caso o nome do usuário seja `customuser`
+# Gera uma nova chave SSH para o usuário caso o nome do usuário \
+# seja `customuser`
 # Isso é útil para identificar usuários com uma chave SSH personalizada
 RUN if [ "$USER_NAME" = "customuser" ]; then \
         ssh-keygen -t ed25519 -C "Usuário $USER_NAME" \
                    -f /home/$USER_NAME/.ssh/id_ed25519_$USER_NAME \ -N ""; \
     fi
-# Atualiza o pip para a versão mais recente
-RUN python -m pip install --upgrade pip
 
-# Instala o `pre-commit` globalmente para configurar e verificar convenções
-# de código
-# Caso o `pre-commit` não esteja especificado no arquivo `requirements.txt`
-RUN pip install pre-commit
+# Atualiza o pip e instala pre-commit globalmente
+RUN python -m pip install --upgrade pip && \
+    pip install pre-commit

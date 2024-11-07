@@ -1,3 +1,6 @@
+# Extende a imagem python-base-user, adicionando Node.js e Yarn.
+# É usado como base para Dockerfile-base-python-nodejs-dev.
+
 # Define uma imagem base chamada python-nodejs-base que começa a partir de uma
 # imagem Python configurada
 # Essa imagem inclui Python e está configurada para um usuário específico

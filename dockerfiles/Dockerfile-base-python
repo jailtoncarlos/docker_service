@@ -81,24 +81,25 @@ RUN tar -xvf /root/wkhtmltox.tar.xz -C /root && \
 # Instala o Google Chrome Stable e configura o ChromeDriver para
 # testes automatizados
 # Adiciona a chave GPG do Google e o repositório para o Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | \
-    apt-key add - && \
-    echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> \
-    /etc/apt/sources.list.d/google.list
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list
+
 
 # Instala o navegador Google Chrome Stable
 RUN apt-get update && apt-get install -yqq \
     --fix-missing --no-install-recommends \
     google-chrome-stable \
     && apt-get -y autoremove && apt-get clean \
-    && rm -rf /var/cache/apt/* && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apt/*  \
+    && rm -rf /var/lib/apt/lists/*
 
 # Baixa e instala o ChromeDriver (navegador Google Chrome Stable)
 # para  testes automatizados
 # descompactando para /usr/local/bin
-RUN wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip && \
-    unzip chromedriver_linux64.zip && \
-    cp chromedriver /usr/local/bin/chromedriver
+RUN wget https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip  \
+    && unzip chromedriver_linux64.zip  \
+    && mv chromedriver /usr/local/bin/chromedriver  \
+    && rm chromedriver_linux64.zip
 
 # Docker build example
 # docker build -t python-base:latest -f /home/jailton/workstation/sdocker/dockerfiles/Dockerfile-base-python .

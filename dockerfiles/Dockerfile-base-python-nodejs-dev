@@ -1,49 +1,51 @@
+# Dockerfile-base-python-nodejs-dev: Extensão para ambiente Python + Node.js
+
+# Similar ao Dockerfile-base-python-dev, mas baseado em uma imagem que inclui
+# Node.js, adequada para projetos que utilizam tanto backend em Python quanto
+# frontend em Node.js.
+
 # Define uma imagem base para desenvolvimento que já possui Python e
 # Node.js instalados
 ARG DEV_IMAGE=python-nodejs-base:latest
 FROM ${DEV_IMAGE} AS app-dev
 
-# Define argumentos de construção que podem ser configurados
-# ao construir a imagem
+# Argumentos de build que serão passados ao contêiner
 # Diretório de trabalho no contêiner
 ARG WORK_DIR
-# Arquivo de requisitos Python a ser usado
+# Arquivo de requisitos para instalar dependências
 ARG REQUIREMENTS_FILE
-# Nome do usuário padrão para o contêiner
+# Nome do usuário padrão no contêiner
 ARG USER_NAME
 
-# Define variáveis de ambiente para persistir as configurações no
-# contêiner em runtime
-# Isso permite que esses valores sejam acessados pelos
-# processos no contêiner
+# Persistência dos argumentos como variáveis de ambiente
+# Isso permite que essas variáveis sejam usadas no contêiner em runtime
 ENV WORK_DIR=${WORK_DIR}
 ENV REQUIREMENTS_FILE=${REQUIREMENTS_FILE}
 ENV USER_NAME=${USER_NAME}
 
-# Marca o diretório de trabalho especificado em $WORK_DIR como
-# um "diretório seguro" para o Git
-# Isso evita mensagens de aviso do Git ao executar comandos nesse diretório
+# Marca o diretório especificado em $WORK_DIR como "seguro" para o Git
+# Isso evita avisos quando o Git interage com o diretório
 RUN git config --global --add safe.directory $WORK_DIR
 
-# Define o usuário padrão para o contêiner como $USER_NAME
-# Garante que as operações no contêiner sejam executadas
-# com as permissões do usuário especificado
+# Define o usuário padrão para o contêiner
+# Isso garante que as operações no contêiner sejam executadas
+# com as permissões do usuário
 USER $USER_NAME
 
-# Define o diretório de trabalho como $WORK_DIR
-# Este será o diretório padrão onde o comando CMD será executado
+# Define o diretório de trabalho (WORKDIR) para o contêiner
+# Todas as instruções após essa linha, incluindo o CMD, serão executadas
+# a partir deste diretório
 WORKDIR $WORK_DIR
 
-# Copia os arquivos da aplicação para o diretório de trabalho do contêiner
-# Especifica o usuário $USER_NAME para garantir que ele tenha
-# as permissões corretas
+# Copia o conteúdo do diretório de trabalho atual para o contêiner
+# O diretório destino no contêiner é especificado por $WORK_DIR
+# O comando COPY é executado com o usuário especificado ($USER_NAME)
 COPY --chown=$USER_NAME:$USER_NAME . $WORK_DIR
 
-# Instala as dependências Python listadas no arquivo
-# especificado em ${REQUIREMENTS_FILE}
-# Utiliza cache de pip para otimizar a instalação e reduzir o tempo em
-# futuras construções
-# A opção --user instala os pacotes no diretório do usuário ($HOME/.local/)
+# Instala as dependências do Python usando o arquivo requirements especificado
+# O cache de pip é montado em /opt/.cache para acelerar futuras instalações
+# A instalação é feita com a flag --user, para que os pacotes sejam instalados
+# no diretório do usuário
 RUN --mount=type=cache,target=/opt/.cache pip install \
     --user -r ${REQUIREMENTS_FILE}
 
@@ -51,17 +53,15 @@ RUN --mount=type=cache,target=/opt/.cache pip install \
 RUN pip install django-extensions
 
 # Inclui o diretório $HOME/.local/bin no PATH do contêiner
-# Isso permite que os pacotes Python instalados com --user sejam
-# acessíveis no PATH global
+# Isso permite que os pacotes instalados no diretório do usuário (com --user)
+# sejam acessíveis globalmente
 ENV PATH="$PATH:$HOME/.local/bin"
 
-# Redefine o diretório de trabalho para $WORK_DIR, garantindo que o
-# comando CMD será executado aqui
+# Define o diretório de trabalho como $WORK_DIR, novamente, para garantir que
+# o CMD execute neste diretório
 WORKDIR $WORK_DIR
 
-# Define o comando padrão (CMD) para o contêiner
-# Esse comando exibe uma mensagem e entra em um modo de
-# espera infinito (sleep infinity),
-# o que é útil em contêineres de desenvolvimento que precisam ficar
-# ativos para depuração
+# Define o comando padrão do contêiner (CMD)
+# Esse comando exibe uma mensagem e entra em modo de espera infinito
+# útil em contêineres de desenvolvimento que precisam permanecer ativos
 CMD ["/bin/sh", "-c", "echo 'Starting dev container'; sleep infinity"]

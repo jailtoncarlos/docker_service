@@ -519,9 +519,22 @@ function copy_docker_compose_base() {
     echo ">>> cp $project_dockercompose_base_path.sample $project_dockercompose_base_path"
     cp "$project_dockercompose_base_path.sample" "$project_dockercompose_base_path"
   fi
+#TODO tratar se está previsto a existência do docker-compose-base.yml
+# SE sim, caso o arquivo não existar, gerar mensagem de erro e ajustes
+#  compose_filepath=$(obter_caminho_dockercompose_base "$PROJECT_ENV_PATH_FILE" \
+#    "$PROJECT_DEV_DIR" \
+#    "$INIFILE_PATH")
+#  return=$?
 
   # Extrair o path usando grep e sed
+  if [ ! -f $project_dockercompose_base_path ]; then
+    echo_warning "Dockerfile base, arquivo $project_dockercompose_base_path
+    não existe!"
+    return 1
+  fi
+
   path_volume_script=$(grep -oP '(?<=- ).*(?=:/scripts/)' "$project_dockercompose_base_path")
+
   path_script_dir=$SCRIPT_DIR/scripts/
   if [ -f "$project_dockercompose_base_path" ] && [ "$path_volume_script" != "$path_script_dir" ]; then
     dockerfile_postgresql=$(read_ini "$config_inifile" "dockerfile" "postgresql" | tr -d '\r')
@@ -541,6 +554,7 @@ function copy_docker_compose_base() {
     novo_texto="      - ${path_script_dir}init_database.sh:/docker-entrypoint-initdb.d/init_database.sh"
     sed -i "/docker-entrypoint-initdb.d/c\\$novo_texto" "$project_dockercompose_base_path"
   fi
+  return 0
 }
 
 function verifica_e_configura_dockerfile_project() {
@@ -1058,6 +1072,48 @@ if [ "$USER_NAME" != $(id -un) ]; then
 fi
 
 ############ Tratamento para recuperar os arquivos docker-compose ############
+# Função para obter o caminho do arquivo docker-compose
+function obter_caminho_dockercompose_base() {
+  local project_env_path_file="$1"
+  local project_dev_dir="$2"
+  local config_inifile="$3"
+
+  local project_env_dir="$(dirname $project_env_path_file)"
+
+  # Lê o valor de "dockercompose" no arquivo de configuração INI para definir o arquivo base do Docker Compose
+  local dockercompose_base
+  dockercompose_base=$(read_ini "$config_inifile" "dockercompose" "python_base" | tr -d '\r')
+
+  # Define o caminho inicial para buscar o arquivo compose no diretório do ambiente
+  local compose_filepath="${project_env_dir}/${dockercompose_base}"
+
+  # Verifica se o arquivo existe no diretório do ambiente; se não, verifica no diretório de desenvolvimento
+  if [ ! -f "$compose_filepath" ]; then
+    compose_filepath="${project_dev_dir}/${dockercompose_base}"
+
+    # Se o arquivo não existir em nenhum dos diretórios, define compose_filepath como vazio
+    if [ ! -f "$compose_filepath" ]; then
+      compose_filepath=""
+    fi
+  fi
+
+  # Se compose_filepath não estiver vazio, formata o caminho para uso com a flag "-f"
+  if [ -n "$compose_filepath" ]; then
+    echo "$compose_filepath"
+    return 0
+  fi
+
+  return 1  # Retorna 1 se não encontrar o caminho do Docker Compose
+
+# Exemplo de uso da função:
+# caminho_compose=$(obter_caminho_compose "/caminho/para/config.ini" "/caminho/para/env" "/caminho/para/dev")
+# if [ $? -eq 0 ]; then
+#   echo "Caminho encontrado: $caminho_compose"
+# else
+#   echo "Caminho do Docker Compose não encontrado."
+# fi
+}
+
 function get_compose_command() {
   local project_env_path_file="$1"
   local project_dev_dir="$2"
@@ -1096,24 +1152,12 @@ function get_compose_command() {
     fi
   done
 
-  dockercompose_base=$(read_ini "$config_inifile" "dockercompose" "python_base" | tr -d '\r')
-  # Verificar se o arquivo Dockerfile base existe no diretório onde estar o arquivo env.
-  # Se não existir, verifica se existe no diretório root do projeto.
-  compose_filepath="${project_env_dir}/${dockercompose_base}"
-  if [ ! -f "$compose_filepath" ]; then
-    compose_filepath="${project_dev_dir}/${dockercompose_base}"
-    if [ ! -f "$compose_filepath" ]; then
-#      echo "Arquivo $compose_filepath não existe"
-#      return 0
-      compose_filepath=""
-    fi
-  fi
-  if [ ! -z "$compose_filepath" ]; then
-    compose_filepath="-f $compose_filepath"
-  fi
+  compose_filepath=$(obter_caminho_dockercompose_base "$project_env_dir" \
+    "$project_dev_dir" \
+    "$config_inifile")
 
   # Retornar o valor de COMPOSE
-  COMPOSE="docker compose ${compose_filepath} ${composes_files[*]}"
+  COMPOSE="docker compose -f ${compose_filepath} ${composes_files[*]}"
   echo "$COMPOSE"
   return 0
 }

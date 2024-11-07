@@ -170,7 +170,10 @@ function verifica_e_configura_env() {
         echo_error "Arquivo ${project_env_file_sample} não encontrado. Impossível continuar!"
         echo_info "Esse arquivo é o modelo com as configurações mínimas necessárias para os containers funcionarem.
        Deseja que este script GERE um arquivo modelo padrão para seu projeto?"
-        read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+        # -r: Impede o read de interpretar barras invertidas (\) como caracteres
+        # de escape, o que garante que a entrada do usuário seja lida exatamente
+        # como digitada.
+        read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
         resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
 
         if [ "$resposta" = "S" ]; then
@@ -370,6 +373,7 @@ fi
 REQUIREMENTS_FILE="${REQUIREMENTS_FILE:-requirements.txt}"
 
 BASE_DIR=${BASE_DIR:-$DEFAULT_BASE_DIR}
+
 SETTINGS_LOCAL_FILE_SAMPLE="${SETTINGS_LOCAL_FILE_SAMPLE:-local_settings_sample.py}"
 # A estrutura ${VAR/old/new} substitui a primeira ocorrência de old na variável VAR por new
 # Removendo a plavra "_sample". Ex. local_settings_sample.py irá ficar  local_settings.py
@@ -384,12 +388,35 @@ POSTGRES_HOST=${DATABASE_HOST:-$POSTGRES_HOST}
 POSTGRES_PORT=${DATABASE_PORT:-$POSTGRES_PORT}
 POSTGRES_EXTERNAL_PORT=${POSTGRES_EXTERNAL_PORT:-$POSTGRES_PORT}
 #POSTGRESQL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/"
+
+DATABASE_DUMP_DIR="${DATABASE_DUMP_DIR:-$PROJECT_ROOT_DIR/dump}"
 POSTGRES_DUMP_DIR=${DATABASE_DUMP_DIR:-dump}
 DIR_DUMP=${POSTGRES_DUMP_DIR:-dump}
 
 WORK_DIR="${WORK_DIR:-/opt/app}"
 
-PROJECT_DOCKERFILE="${DOCKERFILE:-$DEFAULT_PROJECT_DOCKERFILE}"
+if [ -n "$DOCKERFILE" ]; then
+  if [ ! -f $DOCKERFILE ]; then
+    echo_warning "Variável \"DOCKERFILE\" identificada no arquivo \"$PROJECT_ENV_PATH_FILE\"
+    e seu conteúdo está definido como: \"$DOCKERFILE\". Essa variável especifica
+    o caminho do arquivo Dockerfile. No entando, o arquivo não foi encontrado.
+
+    Para resover isso, edite o arquivo \"$PROJECT_ENV_PATH_FILE\" e procede com
+    uma das oppções abaixo:
+    1. Incluir o caminho (path) correto do arquivo Dockerfile.
+    2. Remover o valor da variável \"DOCKERFILE\" e executar novamente o
+    utilitário \"sdocker\". Feito isso, o \"sdocker\" irá gerar um novo arquivo
+    Dockerfile para seu projeto."
+    echo_error "Arquivo \"$DOCKERFILE\" não existe.
+    Impossível continuar"
+  else
+    # arquivo Dockerfile informado no .env
+    PROJECT_DOCKERFILE="$DOCKERFILE"
+  fi
+  else
+    PROJECT_DOCKERFILE="$PROJECT_ROOT_DIR/$DEFAULT_PROJECT_DOCKERFILE"
+fi
+
 # Obtendo o nome do Dockerfile sample a partir do diretório de $PROJECT_DOCKERFILE e
 # filename de  $PROJECT_DOCKERFILE_SAMPLE
 PROJECT_DOCKERFILE_SAMPLE="$(dirname $PROJECT_DOCKERFILE)/$(basename $DEFAULT_PROJECT_DOCKERFILE_SAMPLE)"
@@ -456,29 +483,29 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   _return_func=$?  # Captura o valor de retorno da função
   read tipo_projeto mensagem <<< "$result"
 
-
-  echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
-  echo_info "$mensagem"
-  if [ -f "$PROJECT_DOCKERFILE" ]; then
-    echo_info "Arquivo com instruções para criar imagem do contêiner da app: $PROJECT_DOCKERFILE"
-  fi
-  if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
-    echo_info "Arquivo: modelo Dockerfile: $PROJECT_DOCKERFILE_SAMPLE"
-  fi
-  if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
-    echo_info "Arquivo de definição que configura os serviços de um aplicativo Docker multi-container: $PROJECT_DOCKERCOMPOSE"
-  fi
-  if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
-    echo_info "Arquivo modelo docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
-  fi
-  if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
-    echo_info "Arquivo com definição de variáveis de ambiente utilizado pelo docker-compose: $PROJECT_ENV_PATH_FILE"
-  fi
-  if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
-    echo_info "Arquivo modelo .env: $PROJECT_ENV_FILE_SAMPLE"
+  if [ "$LOGINFO" = "true" ];  then
+    echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
+    echo_info "$mensagem"
+    if [ -f "$PROJECT_DOCKERFILE" ];  then
+      echo_info "Arquivo com instruções para criar imagem do contêiner da app: $PROJECT_DOCKERFILE"
+    fi
+    if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
+      echo_info "Arquivo: modelo Dockerfile: $PROJECT_DOCKERFILE_SAMPLE"
+    fi
+    if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
+      echo_info "Arquivo de definição que configura os serviços de um aplicativo Docker multi-container: $PROJECT_DOCKERCOMPOSE"
+    fi
+    if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
+      echo_info "Arquivo modelo docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
+    fi
+    if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
+      echo_info "Arquivo com definição de variáveis de ambiente utilizado pelo docker-compose: $PROJECT_ENV_PATH_FILE"
+    fi
+    if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
+      echo_info "Arquivo modelo .env: $PROJECT_ENV_FILE_SAMPLE"
+    fi
   fi
 fi
-
 ##############################################################################
 ### Tratamento para os arquivos docker-compose-base.yml, docker-compose.yml e Dockerfile
 ##############################################################################
@@ -497,8 +524,6 @@ function copy_docker_compose_base() {
   path_volume_script=$(grep -oP '(?<=- ).*(?=:/scripts/)' "$project_dockercompose_base_path")
   path_script_dir=$SCRIPT_DIR/scripts/
   if [ -f "$project_dockercompose_base_path" ] && [ "$path_volume_script" != "$path_script_dir" ]; then
-    echo "9999 path_volume_script=$path_volume_script"
-
     dockerfile_postgresql=$(read_ini "$config_inifile" "dockerfile" "postgresql" | tr -d '\r')
     dockerfile_postgresql_path=$SCRIPT_DIR/dockerfiles/${dockerfile_postgresql}
     # Ajustando o path do build dockerfile do container "postgresql" (db)
@@ -529,6 +554,282 @@ function verifica_e_configura_dockerfile_project() {
   local dev_image="$8"
   local config_inifile="$9"
 
+  function mensagem_explicativa() {
+    # Esta função exibe uma mensagem específica dependendo se o tipo
+    # é dockerfile ou outro docker-compose, explicando o propósito do
+    # arquivo ao usuário.
+    local tipo="$1"
+    local docker_file_or_compose_path="$2"
+    local docker_file_or_compose_sample_path="$3"
+    if [ "$tipo" = "dockerfile" ]; then
+      echo_info "Um arquivo \"Dockerfile\" contém instruções para construção de
+      uma imagem Docker.
+
+      Um Dockerfile.sample é um modelo ou template para o Dockerfile
+      principal. Ele conter instruções básicas ou padrões que devem ser
+      adaptados de acordo com o ambiente específico."
+    else
+      echo_info "Um arquivo \"docker-compose.yml\" é um arquivo configurações de
+      orquestração de contêineres usado pela ferramenta \"Docker Compose\" para
+      definir e gerenciar múltiplos contêineres \"Docker\" como um serviço.
+
+      Um docker-compose.yml.sample é um modelo ou template para o
+      docker-compose.yml, o qual oferece uma configuração básica que pode ser
+      copiada e personalizada para diferentes ambientes (desenvolvimento, teste, produção).
+      Ele fornece um ponto de partida que cada desenvolvedor ou administrador
+      pode adaptar sem alterar o arquivo original.
+      "
+    fi
+  }
+
+  function verifica_e_copia_modelo() {
+    # - Recebe cinco parâmetros.
+    # - Exibe um aviso e chama mensagem_explicativa para exibir informações
+    # adicionais sobre o tipo de arquivo.
+    # - Pergunta ao usuário se deseja copiar o arquivo de modelo para o destino.
+    # Se o usuário confirmar, copia o arquivo e, caso seja um arquivo
+    # Docker Compose, faz uma configuração adicional.
+    local tipo="$1"
+    local docker_file_or_compose_path="$2"
+    local docker_file_or_compose_sample_path="$3"
+    local config_inifile="$4"
+    local script_dir="$5"
+
+    if [ ! -f "$docker_file_or_compose_path" ] && [ -f "$docker_file_or_compose_sample_path" ]; then
+      echo_warning "Detectamos que existe o arquivo $docker_file_or_compose_sample_path,
+      porém não encontramos o arquivo $docker_file_or_compose_path."
+      mensagem_explicativa "$tipo" \
+                           "$docker_file_or_compose_path" \
+                           "$docker_file_or_compose_sample_path"
+      echo "Deseja copiar o arquivo de modelo $docker_file_or_compose_sample_path para
+      o arquivo definitivo $docker_file_or_compose_path?"
+      read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+      resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
+
+      if [ "$resposta" = "S" ]; then
+        if [ "$tipo" != "dockerfile" ]; then
+          dockercompose_base=$(read_ini "$config_inifile" "dockercompose" "python_base" | tr -d '\r')
+          project_dockercompose_base_sample_path="$(dirname $docker_file_or_compose_path)/${dockercompose_base}.sample"
+
+          echo ">>> cp ${script_dir}/${dockercompose_base} $(dirname $docker_file_or_compose_path)/${dockercompose_base}"
+          cp "${script_dir}/${dockercompose_base}" "$project_dockercompose_base_sample_path"
+        fi
+        echo ">>> cp $docker_file_or_compose_sample_path $docker_file_or_compose_path"
+        cp "$docker_file_or_compose_sample_path" "$docker_file_or_compose_path"
+        # Sucesso, modelo copiado
+        return 0
+      fi
+      # resposta foi "não", modelo não copiado.
+      return 1
+    fi
+    # sucesso, arquivos Dockerfile/docker-compose.yml e
+    # Dockerfile.sample/docker-compose.yml.sample já existem.
+    return 0 #sucesso
+  }
+
+  function gerar_arquivo_modelo() {
+    # - Recebe parâmetros para definir o tipo de arquivo (dockerfile ou docker-compose),
+    # os caminhos dos arquivos e outras variáveis importantes.
+    # - Verifica se o arquivo principal ou a variável dev_image não estão definidos.
+    # - Se um dos dois estiver ausente, procede com a mensagem explicativa e a
+    # geração do arquivo de modelo, se o usuário confirmar.
+    # - Lê a variável dev_image ou solicita ao usuário para escolher uma imagem base.
+    # - Define o caminho do arquivo de modelo baseado no tipo de arquivo.
+    # - Copia o arquivo de modelo se o usuário concordar.
+    local tipo="$1"
+    local docker_file_or_compose_path="$2"
+    local docker_file_or_compose_sample_path="$3"
+    local dev_image="$4"
+    local config_inifile="$5"
+    local env_file_path="$6"
+
+    # Se $dev_image não foi definida OU não existe o arquivo Dockerfile, faça
+    # gere um modelo Dockerfile sample e faça uma cópia para Dockerfile.
+    if  [ ! -f "$docker_file_or_compose_path" ] || [ -z "$dev_image" ]; then
+      if [ -f "$docker_file_or_compose_path" ]; then
+        echo_info "Detectamos que seu projeto já tem o arquivo \"$docker_file_or_compose_path\"."
+      fi
+      if [ ! -f "$docker_file_or_compose_sample_path" ]; then
+        mensagem_explicativa "$tipo" \
+                             "$docker_file_or_compose_path" \
+                             "$docker_file_or_compose_sample_path"
+
+        echo "Deseja que este script gere um arquivo modelo (${nome}.sample) para seu projeto?"
+        read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+        resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
+
+        if [ "$resposta" = "S" ]; then
+          if [ -z "$dev_image" ]; then
+            base_image=$(escolher_imagem_base)
+            if [ "$base_image" != "default" ]; then
+              dev_image=$(read_ini "$config_inifile" "images" "$base_image" | tr -d '\r')
+            fi
+          else
+            # Substituindo "-" por "_"
+            base_image="${dev_image//-/_}"
+            # Obtenha o texto à esquerda de ":"
+            base_image="${base_image%%:*}"
+            base_image=$(read_ini "$config_inifile" "image_base_to_dev" "$base_image" | tr -d '\r')
+          fi
+
+          script_dir=$(dirname "$config_inifile")
+          if [ "$tipo" = "dockerfile" ]; then
+            filename=$(read_ini "$config_inifile" "dockerfile" "$base_image" | tr -d '\r')
+            dockerfile_base_dev_sample="${script_dir}/dockerfiles/${filename}"
+          else
+            filename=$(read_ini "$config_inifile" "dockercompose" "$base_image" | tr -d '\r')
+            dockerfile_base_dev_sample="${script_dir}/${filename}"
+          fi
+
+          echo "dockerfile_base_dev_sample: $dockerfile_base_dev_sample"
+          echo "base_image: $base_image"
+          echo "dev_image: $dev_image"
+
+          echo ">>> cp ${dockerfile_base_dev_sample} ${docker_file_or_compose_sample_path}"
+          cp $dockerfile_base_dev_sample "${docker_file_or_compose_sample_path}"
+          echo_success "Arquivo $docker_file_or_compose_sample_path criado!"
+          sleep 0.5
+          # Modelo gerado
+          return 0
+        fi
+        # resposta foi "Não", modelo não criado.
+        return 1
+      fi
+    fi
+    # sucesso, Arquivo Dockerfile/docker-compose.yml existem
+    # OU a variável dev_image foi definida no .env
+    return 0
+  }
+
+  function verificar_e_atualizar_dev_image() {
+    # - Recebe como parâmetros a variável dev_image, o caminho para o arquivo
+    # .env (env_file_path), o tipo (dockerfile ou docker-compose), o caminho do
+    # Dockerfile ou Compose (docker_file_or_compose_path), o nome do
+    # projeto Docker Compose (compose_project_name) e a variável LOGINFO.
+    # - Verifica se dev_image está vazia e, caso esteja, exibe um erro e
+    # instrui a definir o valor no .env.
+    # - Caso LOGINFO esteja definido como true, exibe uma mensagem
+    # informando que DEV_IMAGE está definida.
+    # - Extrai o valor de DEV_IMAGE no .env e, se for diferente de dev_image,
+    # atualiza o .env com o valor correto.
+    # - Caso o tipo seja dockerfile, verifica e substitui app-dev pelo
+    # nome de projeto com sufixo -dev no docker_file_or_compose_path.
+    local dev_image="$1"
+    local env_file_path="$2"
+    local tipo="$3"
+    local docker_file_or_compose_path="$4"
+    local compose_project_name="$5"
+    local LOGINFO="$6"
+
+    if [ -z "$dev_image" ] && [ -f "$docker_file_path" ]; then
+      echo_warning "A variável \"DEV_IMAGE\" não está definida no arquivo '${env_file_path}'
+      Tentando obter o valor dela a partir do arquivo $docker_file_path"
+      # Verifica se a variável "dev_image" está vazia (não definida) e se o arquivo
+      # especificado em "$docker_file_path" existe.
+      # - Se "dev_image" estiver vazia, prossegue para extrair seu valor.
+      # - Se "$docker_file_path" não existir, pula o bloco e evita erros.
+
+      # Extrai o valor da variável "DEV_IMAGE" no Dockerfile localizado em "$docker_file_path".
+      # Usa o comando "grep" para localizar a linha que começa com "ARG DEV_IMAGE="
+      # e "cut" para obter apenas o valor após o símbolo "=".
+#      echo "grep -E \"^ARG DEV_IMAGE=\" $docker_file_path | cut -d '=' -f2"
+      dev_image=$(grep -E "^ARG DEV_IMAGE=" "$docker_file_path" | cut -d '=' -f2)
+
+      # Remove quaisquer espaços em branco ao redor do valor extraído em "dev_image".
+      # Usa o comando "xargs" para limpar espaços extras no início ou no final,
+      # garantindo que "dev_image" contenha apenas o valor necessário.
+      dev_image=$(echo "$dev_image" | xargs)
+      echo_info "Valor identificado: \"DEV_IMAGE=${dev_image}\""
+    fi
+
+    # Testando a variável $dev_image novamente, pois ele pode ter sido definida
+    # no código acima.
+    if [ -z "$dev_image" ]; then
+      echo_error "A variável \"DEV_IMAGE\" não está definida no arquivo '${env_file_path}'"
+      echo_info "Defina o valor dela em '${env_file_path}'"
+      exit 1
+    else
+      if [ "$LOGINFO" = "true" ]; then
+        echo_info "Variável de ambiente \"DEV_IMAGE=${dev_image}\" definida."
+      fi
+
+      # Extrair o valor de DEV_IMAGE do arquivo .env, definido em $env_file_path
+      env_dev_image=$(grep -E "^DEV_IMAGE=" "$env_file_path" | cut -d '=' -f2)
+
+      # Remover espaços em branco ao redor (caso haja)
+      env_dev_image=$(echo "$env_dev_image" | xargs)
+
+      # Atualiza o conteúdo da varíavel DEV_IMAGE no arquivo .env se for
+      # diferente do conteúdo definido no Dockerfile
+      if [ "$dev_image" != "$env_dev_image" ]; then
+        dev_image="${dev_image:-base_image}"
+        echo_warning "--- Substituindo a linha 'DEV_IMAGE='
+        por 'DEV_IMAGE=${dev_image}' no arquivo $env_file_path"
+        sed -i "s|^DEV_IMAGE=.*|DEV_IMAGE=${dev_image}|" "$env_file_path"
+      fi
+
+      # Verifica se o tipo é "dockerfile"
+      if [ "$tipo" = "dockerfile" ]; then
+          # Checa se o arquivo especificado em $docker_file_or_compose_path existe
+          # e se não contém a string "${compose_project_name}-dev".
+          if [ -f "$docker_file_or_compose_path" ] \
+            && ! grep -q "${compose_project_name}-dev" "$docker_file_or_compose_path"; then
+              # Exibe uma mensagem indicando que "app-dev" será substituído
+              # por "${compose_project_name}-dev" no arquivo especificado.
+              echo_warning "--- Substituindo \"app-dev\" por \"${compose_project_name}-dev\"
+              no arquivo '${docker_file_or_compose_path}'"
+
+              # Substitui todas as ocorrências de "app-dev"
+              # por "${compose_project_name}-dev" no arquivo.
+              # A flag "-i" permite que a substituição seja feita diretamente
+              # no arquivo.
+              sed -i "s|app-dev|${compose_project_name}-dev|g" "$docker_file_or_compose_path"
+          fi
+      fi
+    fi
+  }
+
+  function verificar_existencia_arquivo() {
+    # - Recebe parâmetros para o caminho do arquivo (docker_file_or_compose_path),
+    # o caminho do .env (env_file_path), o tipo (dockerfile ou docker-compose)
+    # e o nome do arquivo (nome).
+    # - Verifica se o arquivo docker_file_or_compose_path existe. Se não existir,
+    # define projeto_dir_path como o diretório base do arquivo .env.
+    # - Dependendo do tipo, define a variável mensagem_opcao com as instruções
+    # corretas para o dockerfile ou o docker-compose.
+    # - Exibe mensagens de erro e aviso com as instruções para o usuário.
+    local docker_file_or_compose_path="$1"
+    local env_file_path="$2"
+    local tipo="$3"
+    local nome="$4"
+
+    if [ ! -f "$docker_file_or_compose_path" ]; then
+      projeto_dir_path=$(dirname $env_file_path)
+      if [ "$tipo" = "dockerfile" ]; then
+        mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo
+        na variável de ambiente \"DOCKERFILE\" no arquivo $env_file_path.
+        Exemplo: DOCKERFILE=${projeto_dir_path}/$(basename $docker_file_or_compose_path)"
+      else
+        mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo
+        na variável de ambiente \"COMPOSES_FILES\" no arquivo $env_file_path.
+  Exemplo:
+  COMPOSES_FILES=\"
+  all:docker-compose.yml
+  \"
+        "
+      fi
+
+      echo_error "Arquivo $docker_file_or_compose_path não encontrado.
+      Impossível continuar!"
+      echo_warning "O arquivo ${nome} faz parte da arquitetura do \"sdocker\".
+      Há três formas para resolver isso:
+      1. Gerar o arquivo \"$nome\". Para isso, execute novamente o \"sdocker\" (comando sdocker) e siga as orientações.
+      2. Criar o arquivo $docker_file_or_compose_path no diretório raiz $projeto_dir_path do seu projeto.
+      $mensagem_opcao"
+      exit 1
+    fi
+  }
+
   local dockerfile_base_dev_sample
   local resposta
   local base_image
@@ -557,137 +858,36 @@ function verifica_e_configura_dockerfile_project() {
     echo_warning "Arquivo $docker_file_or_compose_path não encontrado."
   fi
 
-  if [ ! -f "$docker_file_or_compose_path" ] && [ -f "$docker_file_or_compose_sample_path" ]; then
-    echo_warning "Detectamos que existe o arquivo $docker_file_or_compose_sample_path, porém não encontramos o arquivo $docker_file_or_compose_path."
-    if [ "$tipo" = "dockerfile" ]; then
-      echo_info "O arquivo '$docker_file_or_compose_path' contém instruções para construção de uma imagem Docker.
-      Deseja copiar o arquivo de modelo $docker_file_or_compose_path para o arquivo definitivo $docker_file_or_compose_sample_path?"
-    else
-      echo_info "O arquivo \"$docker_file_or_compose_path\" é um arquivo de configuração usado pela ferramenta
-      \"Docker Compose\" para definir e gerenciar múltiplos contêineres \"Docker\" como um serviço.
-      Deseja copiar o arquivo de modelo $docker_file_or_compose_path para o arquivo definitivo ${docker_file_or_compose_sample_path}?"
-    fi
-    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
-    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
+  verifica_e_copia_modelo "$tipo" \
+    "$docker_file_or_compose_path" \
+    "$docker_file_or_compose_sample_path" \
+    "$config_inifile" \
+    "$script_dir"
 
-    if [ "$resposta" = "S" ]; then
-      if [ "$tipo" != "dockerfile" ]; then
-        dockercompose_base=$(read_ini "$config_inifile" "dockercompose" "python_base" | tr -d '\r')
-        project_dockercompose_base_sample_path="$(dirname $docker_file_or_compose_path)/${dockercompose_base}.sample"
+  gerar_arquivo_modelo "$tipo" \
+    "$docker_file_or_compose_path" \
+    "$docker_file_or_compose_sample_path" \
+    "$dev_image" \
+    "$config_inifile" \
+    "$env_file_path"
 
-        echo ">>> cp ${script_dir}/${dockercompose_base} $(dirname $docker_file_or_compose_path)/${dockercompose_base}"
-        cp "${script_dir}/${dockercompose_base}" "$project_dockercompose_base_sample_path"
-      fi
-      echo ">>> cp $docker_file_or_compose_sample_path $docker_file_or_compose_path"
-      cp "$docker_file_or_compose_sample_path" "$docker_file_or_compose_path"
-    fi
-  fi
+  verifica_e_copia_modelo "$tipo" \
+    "$docker_file_or_compose_path" \
+    "$docker_file_or_compose_sample_path" \
+    "$config_inifile" \
+    "$script_dir"
 
-  # Se $dev_image não foi definida OU não existe o arquivo Dockerfile, faça
-  # gere um modelo Dockerfile sample e faça uma cópia para Dockerfile.
-  if  [ ! -f "$docker_file_or_compose_path" ] || [ -z "$dev_image" ]; then
-    if [ ! -f "$docker_file_or_compose_sample_path" ] || [ ! -f "$docker_file_or_compose_path" ]; then
-      if [ -f "$docker_file_or_compose_path" ]; then
-        echo_info "Detectamos que seu projeto já tem o arquivo \"$docker_file_or_compose_path\".
-        Deseja que este script gere um arquivo modelo (${nome} sample) para seu projeto?"
-      else
-        echo_info "Deseja que este script gere um arquivo modelo (${nome} sample) para seu projeto?"
-      fi
-      read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
-      resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
-    fi
+  verificar_e_atualizar_dev_image "$dev_image" \
+    "$env_file_path" \
+    "$tipo" \
+    "$docker_file_or_compose_path" \
+    "$compose_project_name" \
+    "$LOGINFO"
 
-    if [ "$resposta" = "S" ] && [ ! -f "$docker_file_or_compose_sample_path" ] && [ -z "$dev_image" ]; then
-      echo_error "A variável DEV_IMAGE não está definida no arquivo \"${env_file_path}\""
-      echo_warning "Essa variável é usada pelo Dockerfile para definir a imagem base a ser utilizada para construir o contêiner."
-
-      base_image=$(escolher_imagem_base)
-      if [ "$base_image" != "default" ]; then
-        dev_image=$(read_ini "$config_inifile" images "$base_image" | tr -d '\r')
-
-        script_dir=$(dirname "$config_inifile")
-        if [ "$tipo" = "dockerfile" ]; then
-          filename=$(read_ini "$config_inifile" "dockerfile" "$base_image" | tr -d '\r')
-          dockerfile_base_dev_sample="${script_dir}/dockerfiles/${filename}"
-        else
-          filename=$(read_ini "$config_inifile" "dockercompose" "$base_image" | tr -d '\r')
-          dockerfile_base_dev_sample="${script_dir}/${filename}"
-        fi
-
-        echo "base_image: $base_image"
-        echo "dev_image: $dev_image"
-        echo "dockerfile_base_dev_sample: $dockerfile_base_dev_sample"
-
-        if [ "$resposta" = "S" ]; then
-          echo ">>> cp ${dockerfile_base_dev_sample} ${docker_file_or_compose_sample_path}"
-          cp $dockerfile_base_dev_sample "${docker_file_or_compose_sample_path}"
-          echo_success "Arquivo $docker_file_or_compose_sample_path criado!"
-          sleep 0.5
-        fi
-      fi
-    fi
-  fi
-  if  [ -z "$dev_image" ] && [ -f "$docker_file_path" ]; then
-    # Extrair o valor de DEV_IMAGE usando o caminho definido em $docker_file_or_compose_path
-    dev_image=$(grep -E "^ARG DEV_IMAGE=" "$docker_file_path" | cut -d '=' -f2)
-
-    # Remover espaços em branco ao redor (caso haja)
-    dev_image=$(echo "$dev_image" | xargs)
-  fi
-
-  # Testando a variável $dev_image novamente, pois ele pode ter sido definida no código acima.
-  if [ -z "$dev_image" ]; then
-    echo_error "A variável DEV_IMAGE não está definida no arquivo '${env_file_path}'"
-    echo_info "Defina o valor dela em '${env_file_path}'"
-    exit 1
-  else
-    if [ "$LOGINFO" = "true" ]; then
-      echo_info "Variável de ambiente \"DEV_IMAGE=${dev_image}\" definida."
-    fi
-
-    # Extrair o valor de DEV_IMAGE do arquivo .env, definido em $env_file_path
-    env_dev_image=$(grep -E "^DEV_IMAGE=" "$env_file_path" | cut -d '=' -f2)
-
-    # Remover espaços em branco ao redor (caso haja)
-    env_dev_image=$(echo "$env_dev_image" | xargs)
-
-    # Atualiza o conteúdo da varíavel DEV_IMAGE no arquivo .env, se for diferente do conteúdo definido no Dockerfile
-    if [ "$dev_image" != "$env_dev_image" ]; then
-      dev_image="${dev_image:-base_image}"
-      echo "--- Substituindo a linha 'DEV_IMAGE=' por 'DEV_IMAGE=${dev_image}' no arquivo $env_file_path"
-      sed -i "s|^DEV_IMAGE=.*|DEV_IMAGE=${dev_image}|" "$env_file_path"
-    fi
-    if [ "$tipo" = "dockerfile" ]; then
-      if [ -f "$docker_file_or_compose_path" ] && ! grep -q "${compose_project_name}-dev" "$docker_file_or_compose_path"; then
-          echo "--- Substituindo \"app-dev\" por \"${compose_project_name}-dev\" no arquivo '${docker_file_or_compose_path}'"
-          sed -i "s|app-dev|${compose_project_name}-dev|g" "$docker_file_or_compose_path"
-      fi
-    fi
-  fi
-
-  if [ ! -f "$docker_file_or_compose_path" ]; then
-    projeto_dir_path=$(dirname $env_file_path)
-    if [ "$tipo" = "dockerfile" ]; then
-      mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo na variável de ambiente \"DOCKERFILE\" no arquivo $env_file_path.
-      Exemplo: DOCKERFILE=${projeto_dir_path}/$(basename $docker_file_or_compose_path)"
-    else
-      mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo na variável de ambiente \"COMPOSES_FILES\" no arquivo $env_file_path.
-Exemplo:
-COMPOSES_FILES=\"
-all:docker-compose.yml
-\"
-      "
-    fi
-
-    echo_error "Arquivo $docker_file_or_compose_path não encontrado. Impossível continuar!"
-    echo_warning "O arquivo ${nome} faz parte da arquitetura do \"sdocker\".
-    Há três formas para resolver isso:
-    1. Gerar o arquivo \"$nome\". Para isso, execute novamente o \"sdocker\" (comando sdocker) e siga as orientações.
-    2. Criar o arquivo $docker_file_or_compose_path no diretório raiz $projeto_dir_path do seu projeto.
-    $mensagem_opcao"
-
-    exit 1
-  fi
+ verificar_existencia_arquivo "$docker_file_or_compose_path" \
+   "$env_file_path" \
+   "$tipo" \
+   "$nome"
 }
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
@@ -821,11 +1021,12 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" = "false" ]; then
   exit 1
 fi
 
-if [ "$REVISADO" = "true" ]; then
+if [ "$REVISADO" = "true" ] && [ "$LOGINFO" = "true" ]; then
   echo_info "Variável REVISADO=true"
 fi
 
 ########################## Validações de variáveis definidas no arquivo .env  ##########################
+
 if [ ! -d "$BASE_DIR" ]; then
   echo_error "Caminho do diretório \"$BASE_DIR\" definido na variável \"BASE_DIR\" no arquivo $PROJECT_ENV_PATH_FILE NÃO existe.
   Edite o arquivo e defina o caminho correto do diretório na variável"
@@ -843,7 +1044,7 @@ if [ "$USER_NAME" != $(id -un) ]; then
   é diferente do usuário \"$(id -un)\" dos seu sistema operacional \"$(get_os_name)\"."
 
   echo_info "Deseja que este script faça as devidas correçõe no arquivo \"$PROJECT_ENV_PATH_FILE\" ?"
-  read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+  read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
   resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
   if [ "$resposta" = "S" ]; then
     # Substitui os valores das variáveis com os novos valores dinâmicos
@@ -1026,7 +1227,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJA
     esteja em conformidade com as regras definidas, melhorando a qualidade e consistência do projeto.
 
     Deseja que este script copie um arquivo pré-configurado para seu projeto?"
-    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
     resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
     if [ "$resposta" = "S" ]; then
       echo ">>> cp ${SCRIPT_DIR}/${PRE_COMMIT_CONFIG_FILE} $file_precommit_config"
@@ -1491,7 +1692,7 @@ function container_failed_to_initialize() {
             echo_info "Foi detectado que o serviço \"$service\" está utilizando a porta \"$port\".
             Deseja encerrar a execução desse serviço?"
 
-            read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+            read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
             resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
             if [ "$resposta" = "S" ]; then
               echo ">>> docker stop $service"
@@ -1749,7 +1950,7 @@ function database_wait() {
     echo ""
     echo_warning "Banco \"$POSTGRES_DB\" não existe."
     echo "Deseja iniciar a restauração do dump agora?"
-    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
     resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
 
     if [ "$resposta" = "S" ]; then
@@ -1772,7 +1973,7 @@ function database_wait() {
     echo ""
     echo_warning "Banco \"$POSTGRES_DB\" existe, porém tabela \"django_migrations\" não existe!"
     echo "Deseja iniciar a restauração do dump agora?"
-    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
     resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
 
     if [ "$resposta" = "S" ]; then
@@ -1915,7 +2116,7 @@ function database_db_restore() {
     echo_success "A restauração foi realizada com sucesso!"
     echo ""
     echo "Deseja visualizar o arquivo de log gerado?"
-    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
     resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
 
     if [ "$resposta" = "S" ]; then
@@ -1937,15 +2138,6 @@ function _service_db_up() {
 
   if docker container ls | grep -q "${COMPOSE_PROJECT_NAME}-${_service_name}-1"; then
     echo_warning "O container Postgres já está em execução."
-#    echo_info "Deseja abrir o log para monitorar a execução?.
-#    Para sair do log, digite as teclas Ctrl + C
-#    Você também pode executar manualmente a qualquer momento, assim: <<service docker>> db logs"
-#    read -p "Pressione 'S' para confirmar ou [ENTER] para sair: " resposta
-#    resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
-#
-#    if [ "$resposta" == "S" ]; then
-#      service_logs "$_service_name" $_option
-#    fi
   else
     echo "$COMPOSE up $_option $_service_name"
     error_message=$($COMPOSE up $_option "$_service_name" 2>&1 | tee /dev/tty)
@@ -1995,7 +2187,7 @@ function command_web_test_behave() {
       sleep 0.5
   else
     echo_info "Deseja rodar o teste a partir de um database template?"
-    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
     resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
 
     if [ "$resposta" == "S" ]; then
@@ -2073,8 +2265,16 @@ function command_web_django_debug() {
 
   database_wait
   export "APP_PORT=${_port}"
+  # Verificar se o django-extensions está instalado
+  if ! $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME "$_service_name" python -c "import django_extensions" &>/dev/null; then
+    echo_warning "django-extensions não está instalado. Instalando..."
+    $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME "$_service_name" pip install django-extensions
+  fi
+
+  # Executar o runserver_plus
   echo ">>> $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME --service-ports $_service_name python manage.py runserver_plus 0.0.0.0:${_port} $_option"
   $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME --service-ports "$_service_name" python manage.py runserver_plus 0.0.0.0:${_port} $_option
+
   export "APP_PORT=${APP_PORT}"
 }
 
@@ -2246,7 +2446,7 @@ function service_down() {
     if echo "$_option" | grep -qE "(--volumes|-v)"; then
     echo_warning "Cuidado: O uso de --volumes ou -v pode remover os volumes do banco de dados!"
     echo_info "Tem certeza de que deseja remover os volumes? Isso pode apagar o banco de dados."
-    read -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+    read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
     resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
 
     if [ "$resposta" != "S" ]; then
@@ -2407,8 +2607,12 @@ function main() {
 }
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
-  if [ "$LOGINFO" = "false" ]; then
-    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". DEFINA \"LOGINFO=true\" PARA NÃO MAIS EXIBIR AS MENSAGENS ACIMA!"
+  if [ "$LOGINFO" = "true" ]; then
+    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". Defina \"LOGINFO=false\" para
+    NÃO mais exibir as mensagens informativas acima!"
+  else
+    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". Caso deseje exibir mensagens
+    informativas, defina a variável \"LOGINFO=true\" no arquivo .env"
   fi
 
   # Chama a função principal

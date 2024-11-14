@@ -98,23 +98,34 @@ function check_zip() {
   fi
 }
 
-function is_tar_gz() {
+function check_tar_gz() {
   local file="$1"
   local cod_return=1
 
   echo ">>> ${FUNCNAME[0]} $1"
 
   if file "$file" | grep -q "gzip compressed data"; then
-    # tar tzf "$file": O comando tar tzf lista o conteúdo do
-    # arquivo .tar.gz (ou tar -tf para .tar sem compressão).
+    if tar -tf "$file" &> /dev/null; then
+      echo "$file é um arquivo .tar.gz (arquivo tar comprimido com gzip)."
+      # tar tzf "$file": O comando tar tzf lista o conteúdo do
+      # arquivo .tar.gz (ou tar -tf para .tar sem compressão).
 
-    # Verifica se o tar consegue listar o conteúdo do arquivo
-    # A saída padrão (a listagem do conteúdo do tar) continua fluindo para o head,
-    # o argumento -n 1 -> ler o primeiro arquivo do conteúdo e interrompe a listagem.
-    if tar tzf "$file" | head -n 1 > /dev/null; then
-      cod_return=0
+      # Verificar se o arquivo .tar.gz contém múltiplos arquivos
+      # (ou uma estrutura de diretórios),
+      # Verifica se o tar consegue listar o conteúdo do arquivo
+      # A saída padrão (a listagem do conteúdo do tar) continua fluindo para o head,
+      # o argumento -n 1 -> ler o primeiro arquivo do conteúdo e interrompe a listagem.
+      if tar -tzf "$file" | head -n 1 > /dev/null; then
+        # Sucesso ao listar o conteúdo do arquivo
+        cod_return=0
+      else
+        # Falha, não consegue listar o conteúdo do arquivo
+        cod_return=1
+      fi
     else
-      cod_return=1
+       # O arquivo .tar.gz contém apenas um arquivo
+       echo "$file é um arquivo .gz simples (apenas compactado com gzip)."
+       cod_return=1
     fi
   fi
   return $cod_return
@@ -148,10 +159,10 @@ function get_sqldump_path() {
   # O arquivo .tar contém apenas um arquivo
   # define $sqldump como caminho do arquivo com ".sql"
   sqldump="${dir_dump}/${filename_no_extension}.sql"
-  is_tar_gz "$zipdump"
-  return_func=$?
+  check_tar_gz "$zipdump"
+  is_tar_gz=$?
 
-  if is_tar_gz "$zipdump" && [ "$(tar tzf "$zipdump" | head -n 2 | wc -l)" -gt 1 ]; then
+  if [ "$is_tar_gz" -eq 0 ] && [ "$(tar tzf "$zipdump" | head -n 2 | wc -l)" -gt 1 ]; then
     # O arquivo .tar contém mais de um arquivo
     # define $sqldump como diretório
     sqldump="${dir_dump}/${filename_no_extension}"
@@ -510,13 +521,16 @@ fi
 # Só realiza a descompactação do arquivo se o mesmo ainda não tiver sido descompactado.
 if [ ! -e "$SQLDUMP" ] && [ -e "$ZIPDUMP" ]; then
   # echo "A variável SQLDUMP está vazia."
-  if is_tar_gz "$ZIPDUMP"; then
+  if check_tar_gz "$ZIPDUMP"; then
     descompactar_tar_gz "$ZIPDUMP" "$DIR_DUMP" "$SQLDUMP"
     has_restore=$?  # Captura o código de retorno da função
     TAR_GZ=1
   elif check_gzip "$ZIPDUMP" || check_zip "$ZIPDUMP"; then
     descompactar_gzip_or_zip "$ZIPDUMP" "$DIR_DUMP" "$SQLDUMP"
     has_restore=$?  # Captura o código de retorno da função
+  else
+    echo_error "Formato de arquivo não suportado."
+    exit 1
   fi
   check_command_status_on_error_exit $has_restore "Falha na descompactação." "Descompactação concluída com sucesso!"
 fi

@@ -1156,8 +1156,12 @@ function get_compose_command() {
     "$project_dev_dir" \
     "$config_inifile")
 
+  if [ -f "$compose_filepath" ]; then
+    compose_filepath="-f ${compose_filepath}"
+  fi
+
   # Retornar o valor de COMPOSE
-  COMPOSE="docker compose -f ${compose_filepath} ${composes_files[*]}"
+  COMPOSE="docker compose ${compose_filepath} ${composes_files[*]}"
   echo "$COMPOSE"
   return 0
 }

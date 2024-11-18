@@ -1,46 +1,6 @@
 ================================================================================
 ### Diferença Principal entre [@] e [*]
 
-No Bash, ${!environment_conditions[@]} e ${!environment_conditions[*]} são
-usados  para obter as chaves de um array associativo. Ambos têm uma função
-semelhante,  mas existem diferenças sutis no comportamento em certos contextos,
-especialmente  em relação à expansão de variáveis e ao manuseio de elementos em
-arrays.
-
-**Diferença Principal entre [@] e [*]**
-"${!environment_conditions[@]}":
-
-Expande cada chave individualmente como um elemento separado.
-Ideal para uso em loops for, pois trata cada chave como um item independente.
-Exemplo: Se usado em um loop for, cada chave será iterada separadamente.
-
-```bash
-for key in "${!environment_conditions[@]}"; do
-    echo "$key"
-done
-```
-
-Neste caso, o loop imprime cada chave em uma nova linha.
-"${!environment_conditions[*]}":
-
-Expande todas as chaves como uma única string.
-É útil para exibir todas as chaves juntas, mas pode não ser adequado para
-iteração, já que as chaves são tratadas como um único elemento.
-Exemplo: Se usado em um loop for, ele considera toda a expansão como um único
-item.
-
-```bash
-for key in "${!environment_conditions[*]}"; do
-    echo "$key"
-done
-```
-Esse código imprimirá todas as chaves em uma única linha, como uma string única.
-
-**Quando Usar [@] vs. [*]**
-- Use [@]: Quando precisar que cada chave seja tratada como um item separado
-    (como em um loop).
-- Use [*]: Quando quiser todas as chaves em uma única string (por exemplo, para
-    exibir todas juntas).
 
 ================================================================================
 ### Porque se usar "$_option" com aspas duplas dar erro na execução do comando?
@@ -79,22 +39,49 @@ docker compose up --build --detach web
 O que é correto, pois --build e --detach são passados como argumentos separados.
 
 ================================================================================
-### Diferença entre $* e $@
- - $*: Combina todos os argumentos em uma única string, separada pelo primeiro
- caractere
- do valor da variável IFS (normalmente um espaço).
- - $@: Trata cada argumento separadamente. Cada argumento é mantido como uma
- entidade individual.
+### Diferença Principal entre [@] e [*]
 
- Portanto, se deseja manter cada argumento como uma entidade separada e iterar
- sobre eles, a melhor escolha é usar "$@".
- Exemplo:
-   local _option=("$@")   Armazena os argumentos restantes como um array
- 
-    # Iterar sobre as opções
-    for op in "${_option[@]}"; do
-        echo "Opção: $op"
-    done
+No Bash, ${!environment_conditions[@]} e ${!environment_conditions[*]} são
+usados para obter as chaves de um array associativo. Ambos têm uma função
+semelhante, mas existem diferenças sutis no comportamento em certos contextos,
+especialmente em relação à expansão de variáveis e ao manuseio de elementos em
+arrays.
+
+**Diferença Principal entre [@] e [*]**
+"${!environment_conditions[@]}":
+
+Expande cada chave individualmente como um elemento separado. Ideal para uso em
+loops for, pois trata cada chave como um item independente.
+
+Exemplo: Se usado em um loop for, cada chave será iterada separadamente.
+```bash
+for key in "${!environment_conditions[@]}"; do
+    echo "$key"
+done
+```
+
+Neste caso, o loop imprime cada chave em uma nova linha.
+"${!environment_conditions[*]}":
+
+Expande todas as chaves como uma única string. É útil para exibir todas as
+chaves juntas, mas pode não ser adequado para iteração, já que as chaves são
+tratadas como um único elemento.
+
+Exemplo: Se usado em um loop for, ele considera toda a expansão como um único
+item.
+```bash
+for key in "${!environment_conditions[*]}"; do
+    echo "$key"
+done
+```
+Esse código imprimirá todas as chaves em uma única linha, como uma string única.
+
+**Quando Usar [@] vs. [*]**
+- Use [@]: Quando precisar que cada chave seja tratada como um item separado
+    (como em um loop).
+- Use [*]: Quando quiser todas as chaves em uma única string (por exemplo, para
+    exibir todas juntas).
+
 
 ** Mensagem: Assigning an array to a string! Assign as array, or use * instead
 of @ to concatenate.
@@ -103,10 +90,9 @@ See SC2124. **
 > Caso 1:
     local _option="$@"
 
-    A mensagem (SC2124)  está relacionada à maneira como a variável _option
-    está sendo atribuída.
-    O problema ocorre porque "$@" refere-se a uma lista de argumentos
-    e não deve ser atribuída diretamente a uma string.
+    A mensagem (SC2124) está relacionada à maneira como a variável _option
+    está sendo atribuída. O problema ocorre porque "$@" refere-se a uma lista de
+    argumentos e não deve ser atribuída diretamente a uma string.
 
     Para corrigir isso, você pode usar a seguinte abordagem, atribuindo como um
     array:
@@ -117,18 +103,18 @@ See SC2124. **
 
 > Caso 2:
     A mensagem do ShellCheck SC2124 ocorre quando se tenta atribuir um array a
-    uma string.
-    Para corrigir isso, quando se quer acessar uma parte específica dos
-    argumentos passados para o script, use uma abordagem compatível com arrays.
+    uma string. Para corrigir isso, quando se quer acessar uma parte específica
+    dos argumentos passados para o script, use uma abordagem compatível com
+    arrays.
 
     Para atribuir os valores de ${@:2} corretamente a uma variável, faça da
     seguinte forma:
 
-    Se a intenção for trabalhar com um array:
-    _option=("${@:2}")
+    - Se a intenção for trabalhar com um array:
+        _option=("${@:2}")
 
-    Se for necessário concatenar os argumentos em uma string, use "$*":
-    _option="${*:2}"
+    - Se for necessário concatenar os argumentos em uma string, use "$*":
+        _option="${*:2}"
 
 ================================================================================
 ### Capturar mensagem de erro
@@ -229,3 +215,12 @@ Isso significa que as variáveis POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER e
 POSTGRES_PASSWORD serão avaliadas apenas quando forem passadas ao comando,
 permitindo que get_host_port receba esses nomes como argumentos literais (sem
 expansão) ao invés de seus valores atuais.
+
+================================================================================
+### O que faz "set -e"
+
+O comando set -e em um script shell faz com que o script saia imediatamente se
+qualquer comando retornar um status de saída diferente de zero (ou seja, se o
+comando falhar). Essa opção é útil para garantir que o script não continue
+executando após um erro, o que ajuda a evitar a propagação de falhas ou efeitos
+colaterais indesejados.

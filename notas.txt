@@ -1,12 +1,59 @@
-======================================================================================================
+================================================================================
+### Diferença Principal entre [@] e [*]
+
+No Bash, ${!environment_conditions[@]} e ${!environment_conditions[*]} são
+usados  para obter as chaves de um array associativo. Ambos têm uma função
+semelhante,  mas existem diferenças sutis no comportamento em certos contextos,
+especialmente  em relação à expansão de variáveis e ao manuseio de elementos em
+arrays.
+
+**Diferença Principal entre [@] e [*]**
+"${!environment_conditions[@]}":
+
+Expande cada chave individualmente como um elemento separado.
+Ideal para uso em loops for, pois trata cada chave como um item independente.
+Exemplo: Se usado em um loop for, cada chave será iterada separadamente.
+
+```bash
+for key in "${!environment_conditions[@]}"; do
+    echo "$key"
+done
+```
+
+Neste caso, o loop imprime cada chave em uma nova linha.
+"${!environment_conditions[*]}":
+
+Expande todas as chaves como uma única string.
+É útil para exibir todas as chaves juntas, mas pode não ser adequado para
+iteração, já que as chaves são tratadas como um único elemento.
+Exemplo: Se usado em um loop for, ele considera toda a expansão como um único
+item.
+
+```bash
+for key in "${!environment_conditions[*]}"; do
+    echo "$key"
+done
+```
+Esse código imprimirá todas as chaves em uma única linha, como uma string única.
+
+**Quando Usar [@] vs. [*]**
+- Use [@]: Quando precisar que cada chave seja tratada como um item separado
+    (como em um loop).
+- Use [*]: Quando quiser todas as chaves em uma única string (por exemplo, para
+    exibir todas juntas).
+
+================================================================================
 ### Porque se usar "$_option" com aspas duplas dar erro na execução do comando?
 
 Explicação:
  ** Comando 1: $COMPOSE up "$_option" "$_service_name" **
  
- Quando você coloca a variável $_option entre aspas duplas, ela é tratada como uma única entidade (uma única string). 
-   Se $_option contiver múltiplos argumentos (por exemplo, "--build --detach"), ao colocar as aspas, 
-   o Bash vai interpretar tudo como um único argumento. Isso é o que provavelmente está causando o erro.
+ Quando você coloca a variável $_option entre aspas duplas, ela é tratada como
+ uma única entidade (uma única string).
+   Se $_option contiver múltiplos argumentos (por exemplo, "--build --detach"),
+   ao colocar as aspas,
+   o Bash vai interpretar tudo como um único argumento. Isso é o que
+   provavelmente está causando o erro.
  
  Exemplo:
  
@@ -14,11 +61,14 @@ Explicação:
  bash
  Copiar código
  docker compose up "--build --detach" web
- O que não é válido porque o Bash está tratando "--build --detach" como um único argumento ao invés de dois argumentos separados (--build e --detach).
+ O que não é válido porque o Bash está tratando "--build --detach" como um único
+ argumento ao invés de dois argumentos separados (--build e --detach).
 
 ** Comando 2: $COMPOSE up $_option "$_service_name" **
 
-Sem as aspas ao redor de $_option, o Bash expande o conteúdo de $_option em vários argumentos se houver espaços dentro dessa variável. Ou seja, ele corretamente passa múltiplos argumentos para o comando docker compose.
+Sem as aspas ao redor de $_option, o Bash expande o conteúdo de $_option em
+vários argumentos se houver espaços dentro dessa variável. Ou seja, ele
+corretamente passa múltiplos argumentos para o comando docker compose.
 
 Exemplo:
 
@@ -28,14 +78,16 @@ Copiar código
 docker compose up --build --detach web
 O que é correto, pois --build e --detach são passados como argumentos separados.
 
-======================================================================================================
+================================================================================
 ### Diferença entre $* e $@
- - $*: Combina todos os argumentos em uma única string, separada pelo primeiro caractere
+ - $*: Combina todos os argumentos em uma única string, separada pelo primeiro
+ caractere
  do valor da variável IFS (normalmente um espaço).
- - $@: Trata cada argumento separadamente. Cada argumento é mantido como uma entidade individual.
+ - $@: Trata cada argumento separadamente. Cada argumento é mantido como uma
+ entidade individual.
 
- Portanto, se deseja manter cada argumento como uma entidade separada e iterar sobre eles,
- a melhor escolha é usar "$@".
+ Portanto, se deseja manter cada argumento como uma entidade separada e iterar
+ sobre eles, a melhor escolha é usar "$@".
  Exemplo:
    local _option=("$@")   Armazena os argumentos restantes como um array
  
@@ -44,27 +96,33 @@ O que é correto, pois --build e --detach são passados como argumentos separado
         echo "Opção: $op"
     done
 
-** Mensagem: Assigning an array to a string! Assign as array, or use * instead of @ to concatenate.
+** Mensagem: Assigning an array to a string! Assign as array, or use * instead
+of @ to concatenate.
 See SC2124. **
 
 > Caso 1:
     local _option="$@"
 
-    A mensagem (SC2124)  está relacionada à maneira como a variável _option está sendo atribuída.
+    A mensagem (SC2124)  está relacionada à maneira como a variável _option
+    está sendo atribuída.
     O problema ocorre porque "$@" refere-se a uma lista de argumentos
     e não deve ser atribuída diretamente a uma string.
 
-    Para corrigir isso, você pode usar a seguinte abordagem, atribuindo como um array:
+    Para corrigir isso, você pode usar a seguinte abordagem, atribuindo como um
+    array:
     _option=("$@")
-    Ou, se a intenção for concatenar os argumentos em uma string, use "$*" em vez de "$@":
+    Ou, se a intenção for concatenar os argumentos em uma string, use "$*" em
+    vez de "$@":
     _option="$*"
 
 > Caso 2:
-    A mensagem do ShellCheck SC2124 ocorre quando se tenta atribuir um array a uma string.
-    Para corrigir isso, quando se quer acessar uma parte específica dos argumentos passados para o script,
-    use uma abordagem compatível com arrays.
+    A mensagem do ShellCheck SC2124 ocorre quando se tenta atribuir um array a
+    uma string.
+    Para corrigir isso, quando se quer acessar uma parte específica dos
+    argumentos passados para o script, use uma abordagem compatível com arrays.
 
-    Para atribuir os valores de ${@:2} corretamente a uma variável, faça da seguinte forma:
+    Para atribuir os valores de ${@:2} corretamente a uma variável, faça da
+    seguinte forma:
 
     Se a intenção for trabalhar com um array:
     _option=("${@:2}")
@@ -72,22 +130,26 @@ See SC2124. **
     Se for necessário concatenar os argumentos em uma string, use "$*":
     _option="${*:2}"
 
-======================================================================================================
+================================================================================
 ### Capturar mensagem de erro
 
- Para capturar e exibir mensagens de erro em um script Shell, você pode redirecionar a saída de
- erro padrão (stderr) de um comando para uma variável ou diretamente para a saída padrão (tela).
+ Para capturar e exibir mensagens de erro em um script Shell, você pode
+ redirecionar a saída de erro padrão (stderr) de um comando para uma variável ou
+ diretamente para a saída padrão (tela).
 
  <<comando>> 2> >(tee /tmp/docker_error.log >&2)
  Explicação:
-   Redirecionamento de erro (2>): O 2> redireciona a saída de erro (stderr) para outro destino.
-   >(tee /tmp/docker_error.log >&2): O tee escreve a saída tanto no arquivo /tmp/docker_error.log
-   quanto na tela (&2 indica o stderr).
-   Verificação do código de saída: Após a execução do comando, o código de retorno ($?) é verificado.
+   Redirecionamento de erro (2>): O 2> redireciona a saída de erro (stderr) para
+   outro destino.
+   >(tee /tmp/docker_error.log >&2): O tee escreve a saída tanto no arquivo
+   /tmp/docker_error.log quanto na tela (&2 indica o stderr).
+   Verificação do código de saída: Após a execução do comando, o código de
+   retorno ($?) é verificado.
    Se for diferente de 0, o comando falhou, e a mensagem de erro será exibida.
 
  Capturando a mensagem de erro em uma variável e exibindo depois:
-   Se quiser capturar a mensagem de erro em uma variável para processamento posterior, pode fazer assim:
+   Se quiser capturar a mensagem de erro em uma variável para processamento
+   posterior, pode fazer assim:
    Captura a mensagem de erro na variável docker_error
  message_error=$(<<comando>> 2>&1 >/dev/null)
  
@@ -99,58 +161,71 @@ See SC2124. **
 
 
  ** Nota **
-Para capturar a saída de erro em uma variável enquanto exibe a saída padrão no terminal,
-o seguinte comando pode ser usado em um script shell:
+Para capturar a saída de erro em uma variável enquanto exibe a saída padrão no
+terminal, o seguinte comando pode ser usado em um script shell:
 ```
 error_message=$($COMPOSE up $_option $_service_name 2>&1 | tee /dev/tty)
 ```
 
 Esse comando faz o seguinte:
-- 2>&1: Redireciona a saída de erro padrão (stderr) para a saída padrão (stdout).
-- tee /dev/tty: Exibe a saída no terminal ao mesmo tempo em que a saída é capturada em error_message.
+- 2>&1: Redireciona a saída de erro padrão (stderr) para a saída padrão (stdout)
+- tee /dev/tty: Exibe a saída no terminal ao mesmo tempo em que a saída é
+    capturada em error_message.
 
 > Qual a diferença entre 2>/dev/null e /dev/null 2>&1?
     Diferença principal:
     - 2>/dev/null: Apenas erros (stderr) são suprimidos.
-    - /dev/null 2>&1: Tanto a saída padrão (stdout) quanto os erros (stderr) são suprimidos, descartando toda a saída do comando.
+    - /dev/null 2>&1: Tanto a saída padrão (stdout) quanto os erros (stderr) são
+        suprimidos, descartando toda a saída do comando.
 
     1. 2>/dev/null:
-    - Este comando redireciona somente a saída de erro (stderr) para o /dev/null.
+    - Este comando redireciona somente a saída de erro (stderr) para
+        o /dev/null.
     - 2>: Especifica que o fluxo de erro (stderr) será redirecionado.
-    - /dev/null: Um "arquivo" especial que descarta qualquer coisa enviada para ele (basicamente, um buraco negro).
+    - /dev/null: Um "arquivo" especial que descarta qualquer coisa enviada para
+        ele (basicamente, um buraco negro).
 
     2. /dev/null 2>&1:
-    - Este comando redireciona tanto a saída de erro (stderr) quanto a saída padrão (stdout) para o /dev/null.
-    - 2>&1: Isso significa "redirecionar o fluxo de erro (stderr) para onde o fluxo de saída padrão (stdout) está indo".
+    - Este comando redireciona tanto a saída de erro (stderr) quanto a saída
+        padrão (stdout) para o /dev/null.
+    - 2>&1: Isso significa "redirecionar o fluxo de erro (stderr) para onde o
+        fluxo de saída padrão (stdout) está indo".
         - 2>: Redireciona o fluxo de erro (stderr).
-        - &1: Diz ao shell para redirecionar o erro para o mesmo destino que a saída padrão (stdout).
-======================================================================================================
+        - &1: Diz ao shell para redirecionar o erro para o mesmo destino que a
+            saída padrão (stdout).
+================================================================================
 ###
-String multilinha SERVICES_DEPENDENCIES: Quando uma string multilinha como SERVICES_DEPENDENCIES é usada em uma
-iteração (for e in ${SERVICES_DEPENDENCIES[@]}; do), o Bash separa cada linha e trata-a como um único item.
-Como o valor de SERVICES_DEPENDENCIES tem quebras de linha, ele trata cada linha como uma entrada.
+String multilinha SERVICES_DEPENDENCIES: Quando uma string multilinha como
+SERVICES_DEPENDENCIES é usada em uma iteração
+(for e in ${SERVICES_DEPENDENCIES[@]}; do), o Bash separa cada linha e trata-a
+como um único item. Como o valor de SERVICES_DEPENDENCIES tem quebras de linha,
+ele trata cada linha como uma entrada.
 
-Array DICT_SERVICES_DEPENDENCIES: Já o array DICT_SERVICES_DEPENDENCIES contém exatamente os mesmos elementos que foram
-adicionados de forma explícita no loop anterior.
-Como cada linha de SERVICES_DEPENDENCIES foi adicionada como um item separado ao array, o comportamento na iteração
-também será o mesmo, porque o array contém os mesmos elementos que estavam nas linhas da string.
+Array DICT_SERVICES_DEPENDENCIES: Já o array DICT_SERVICES_DEPENDENCIES contém
+exatamente os mesmos elementos que foram adicionados de forma explícita no loop
+anterior. Como cada linha de SERVICES_DEPENDENCIES foi adicionada como um item
+separado ao array, o comportamento na iteração também será o mesmo, porque o
+array contém os mesmos elementos que estavam nas linhas da string.
 
 Com array, podemos fazer as seguintes operações
 1. Acesso a Elementos Específicos: echo "${DICT_SERVICES_DEPENDENCIES[0]}"
 2. Iteração Elemento por Elemento:
 3. Adicionar ou Remover Elementos: DICT_SERVICES_DEPENDENCIES+=("new_service")
-4. Substituição de Elementos Específicos: DICT_SERVICES_DEPENDENCIES[1]="new_value"
-5. Verificar o Número de Elementos: echo "Total de serviços: ${#DICT_SERVICES_DEPENDENCIES[@]}"
+4. Substituição de Elementos Específicos:
+    DICT_SERVICES_DEPENDENCIES[1]="new_value"
+5. Verificar o Número de Elementos: echo "Total de serviços:
+    ${#DICT_SERVICES_DEPENDENCIES[@]}"
 6. Ordenação: IFS=$'\n' sorted=($(sort <<<"${DICT_SERVICES_DEPENDENCIES[*]}"))
 
-======================================================================================================
+================================================================================
 Uso do caracter "\" antes de "$"
 A barra invertida (\) antes do símbolo $ no
-comando get_host_port '\$POSTGRES_HOST' '\$POSTGRES_PORT' '\$POSTGRES_USER' '\$POSTGRES_PASSWORD'
-em um script Bash indica ao shell para não interpretar imediatamente o valor da variável.
-Assim, ao invés de POSTGRES_HOST, por exemplo, ser substituído por seu valor atual, o shell passa
-o texto literal \$POSTGRES_HOST ao comando.
-Isso significa que as variáveis POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER e POSTGRES_PASSWORD
-serão avaliadas apenas quando forem passadas ao comando,
-permitindo que get_host_port receba esses nomes como argumentos literais (sem expansão)
-ao invés de seus valores atuais.
+comando get_host_port '\$POSTGRES_HOST' '\$POSTGRES_PORT' '\$POSTGRES_USER'
+'\$POSTGRES_PASSWORD' em um script Bash indica ao shell para não interpretar
+imediatamente o valor da variável. Assim, ao invés de POSTGRES_HOST, por
+exemplo, ser substituído por seu valor atual, o shell passa o texto literal
+\$POSTGRES_HOST ao comando.
+Isso significa que as variáveis POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER e
+POSTGRES_PASSWORD serão avaliadas apenas quando forem passadas ao comando,
+permitindo que get_host_port receba esses nomes como argumentos literais (sem
+expansão) ao invés de seus valores atuais.

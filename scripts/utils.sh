@@ -839,60 +839,37 @@ function check_command_status_on_error_exit() {
 function verificar_comando_inicializacao_ambiente_dev() {
 # Função para verificar o comando de inicialização da aplicação no ambiente de desenvolvimento
     local root_dir="$1"
+    local ini_file_path="$2"
     local tipo_projeto=""
     local mensagem=""
 
-    # Verifica se é Django
-    if [ -f "$root_dir/manage.py" ]; then
-        tipo_projeto="DJANGO"
-        mensagem="Django detectado"
-        echo "$tipo_projeto $mensagem"
-        return 0
+    # Declaração do dicionário
+    declare -A environment_conditions
 
-      # Verifica se é Maven com Tomcat
-      elif [ -f "$root_dir/run-catalina.sh" ]; then
-          tipo_projeto="MAVEN-TOMCAT"
-          mensagem="Maven com Tomcat detectado"
-          echo "$tipo_projeto $mensagem"
-          return 0
-
-      # Verifica se é PHP
-      elif [ -f "$root_dir/index.php" ]; then
-          tipo_projeto="PHP"
-          mensagem="PHP detectado"
-          echo "$tipo_projeto $mensagem"
-          return 0
-
-      # Verifica se é Node.js
-      elif [ -f "$root_dir/package.json" ]; then
-          tipo_projeto="NODEJS"
-          mensagem="Node.js detectado"
-          echo "$tipo_projeto $mensagem"
-          return 0
-
-      # Verifica se é PHP com Composer
-      elif [ -f "$root_dir/composer.json" ]; then
-          tipo_projeto="PHP-COMPOSE"
-          mensagem="PHP com Composer detectado"
-          echo "$tipo_projeto $mensagem"
-          return 0
-
-      # Verifica se é Ruby on Rails
-      elif [ -f "$root_dir/Gemfile" ]; then
-          tipo_projeto="RUBY-RAILS"
-          mensagem="Ruby on Rails detectado"
-          echo "$tipo_projeto $mensagem"
-          return 0
+    # Chamada da função para preencher o dicionário com a seção "environment_dev_existence_condition"
+    if read_section "$ini_file_path" "environment_dev_existence_condition" environment_conditions; then
+        # Itera sobre o dicionário para exibir as chaves e valores
+        # O operador ! é usado em conjunto com arrays para acessar as chaves
+        # (ou índices) de um array associativo ou numérico, em vez dos valores.
+        for key in "${!environment_conditions[@]}"; do
+            condicao="${environment_conditions[$key]}"
+            if eval "$condicao"; then
+              mensagem=$(read_ini "$ini_file_path" "environment_dev_names" $key | tr -d '\r')
+              echo "$key $mensagem"
+              return 0
+            fi
+        done
+    else
+      echo "Erro: Seção não encontrada ou arquivo não existe."
+      return 1
     fi
-
-    # Se nenhum projeto foi detectado
     echo "INDEFINIDO Nenhum projeto detectado"
     return 1
 
     # Exemplo de uso:
-    #  result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
-    #  _return_func=$?  # Captura o valor de retorno da função
-    #  read tipo_projeto mensagem <<< "$result"
+    # result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR" "$INIFILE_PATH")
+    # _return_func=$?  # Captura o valor de retorno da função
+    # read tipo_projeto mensagem <<< "$result"
     #
     # if [ _return_func -gt 0 ]; then
     #    echo "Erro: $mensagem"

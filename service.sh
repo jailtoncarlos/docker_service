@@ -35,18 +35,20 @@ if ! verifica_instalacao; then
     exit 1
 fi
 
-PROJECT_DJANGO='DJANGO'
+
 PROJECT_DEV_DIR=$PROJECT_ROOT_DIR
 PROJECT_NAME=$(basename $PROJECT_ROOT_DIR)
 DEFAULT_BASE_DIR="$PROJECT_ROOT_DIR/$PROJECT_NAME"
 INIFILE_PATH="${SCRIPT_DIR}/config.ini"
 LOCAL_INIFILE_PATH="${SCRIPT_DIR}/config-local.ini"
-
 if [ ! -f "$LOCAL_INIFILE_PATH" ]; then
   echo ">>> cp ${SCRIPT_DIR}/config-local-sample.ini $LOCAL_INIFILE_PATH"
   cp "${SCRIPT_DIR}/config-local-sample.ini" "$LOCAL_INIFILE_PATH"
 fi
 
+PROJECT_DJANGO=$(read_ini "$INIFILE_PATH" "environment_dev_names" "django" | tr -d '\r')
+DISABLE_DOCKERFILE_CHECK="false"
+DISABLE_DEV_ENV_CHECK="false"
 
 command="generate-project"
 arg_command=$1
@@ -60,16 +62,6 @@ elif [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ]; then
   echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto.
   ou use a opção \"generate-project\""
   exit 1
-else
-  result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
-  _return_func=$?  # Captura o valor de retorno da função
-  read TIPO_PROJECT mensagem <<< "$result"
-
-  if [ $_return_func -eq 1 ]; then
-      echo_error "Ambiente de desenvolvimento não identificado."
-      echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto."
-      exit 1
-  fi
 fi
 TIPO_PROJECT=${TIPO_PROJECT:-PROJECT_DJANGO}
 
@@ -288,12 +280,18 @@ configura_env() {
 
   sleep .5
 
-  # Exporta as variáveis de ambiente presentes no arquivo env
+  # Processa o arquivo linha por linha, exportando cada variável
+  # xargs -0 lê o conteúdo do arquivo ${project_env_path_file} (.env), assumindo
+  # que as variáveis estão no formato VARIAVEL=valor, e tenta exportá-las em
+  # uma única linha. O -0 instrui o xargs a processar a entrada de maneira
+  # que cada linha de variável seja tratada como uma única entidade
+  # 2> /dev/null: Redireciona erros para /dev/null, ignorando mensagens de erro
+  # (caso existam variáveis malformadas ou o arquivo esteja vazio).
   export $(xargs -0 < "${project_env_path_file}") 2> /dev/null
 
   # Carrega o conteúdo do arquivo env diretamente no script
-  # &>/dev/null: Redireciona tanto a saída padrão (stdout) quanto a saída de erro (stderr) para /dev/null, que é um "buraco negro" no SO
-  # Silenciar completamente qualquer tipo de saída do comando.
+  # &>/dev/null: Redireciona tanto a saída padrão quanto os erros para /dev/null,
+  # suprimindo mensagens de erro e saída do comando.
   source "${project_env_path_file}" &>/dev/null
 
   # Imprime as variáveis de ambiente
@@ -371,7 +369,6 @@ if [ -f "$REQUIREMENTS_FILE" ]; then
   "
 fi
 REQUIREMENTS_FILE="${REQUIREMENTS_FILE:-requirements.txt}"
-
 BASE_DIR=${BASE_DIR:-$DEFAULT_BASE_DIR}
 
 SETTINGS_LOCAL_FILE_SAMPLE="${SETTINGS_LOCAL_FILE_SAMPLE:-local_settings_sample.py}"
@@ -395,31 +392,49 @@ DIR_DUMP=${POSTGRES_DUMP_DIR:-dump}
 
 WORK_DIR="${WORK_DIR:-/opt/app}"
 
-if [ -n "$DOCKERFILE" ]; then
-  if [ ! -f $DOCKERFILE ]; then
-    echo_warning "Variável \"DOCKERFILE\" identificada no arquivo \"$PROJECT_ENV_PATH_FILE\"
-    e seu conteúdo está definido como: \"$DOCKERFILE\". Essa variável especifica
-    o caminho do arquivo Dockerfile. No entando, o arquivo não foi encontrado.
+DISABLE_DOCKERFILE_CHECK="${DISABLE_DOCKERFILE_CHECK:-false}"
 
-    Para resover isso, edite o arquivo \"$PROJECT_ENV_PATH_FILE\" e procede com
-    uma das oppções abaixo:
-    1. Incluir o caminho (path) correto do arquivo Dockerfile.
-    2. Remover o valor da variável \"DOCKERFILE\" e executar novamente o
-    utilitário \"sdocker\". Feito isso, o \"sdocker\" irá gerar um novo arquivo
-    Dockerfile para seu projeto."
-    echo_error "Arquivo \"$DOCKERFILE\" não existe.
-    Impossível continuar"
-  else
-    # arquivo Dockerfile informado no .env
-    PROJECT_DOCKERFILE="$DOCKERFILE"
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+  if [ "$DISABLE_DOCKERFILE_CHECK" = "false" ]; then
+    if [ -n "$DOCKERFILE" ]; then
+      if [ ! -f $DOCKERFILE ]; then
+        echo_warning "Variável \"DOCKERFILE\" identificada no arquivo \"$PROJECT_ENV_PATH_FILE\".
+        Essa variável especifica o caminho (path) do arquivo Dockerfile. No entando,
+        o arquivo especificado \"$DOCKERFILE\" não foi encontrado.
+
+        Para resover isso, edite o arquivo \"$PROJECT_ENV_PATH_FILE\" e procede com
+        uma das oppções abaixo:
+        1. Incluir o caminho (path) correto do arquivo Dockerfile.
+        2. Remover o valor da variável \"DOCKERFILE\" e executar novamente o
+        utilitário \"sdocker\". Feito isso, o \"sdocker\" irá gerar um novo arquivo
+        Dockerfile para seu projeto.
+        3. Se seu projeto não precisa de arquivo \"Dockerfile\", definir a variável
+        \"DISABLE_DOCKERFILE_CHECK=true\" no arquivo $PROJECT_ENV_PATH_FILE para e executar novamente
+        o \"sdocker\"."
+        echo_error "Arquivo \"$DOCKERFILE\" não existe.
+        Impossível continuar"
+        read -p "Pressione [ENTER] para sair."
+      else
+        # arquivo Dockerfile informado no .env
+        PROJECT_DOCKERFILE="$DOCKERFILE"
+      fi
+      else
+        PROJECT_DOCKERFILE="$PROJECT_ROOT_DIR/$DEFAULT_PROJECT_DOCKERFILE"
+    fi
+  elif [ "$LOGINFO" = "true" ]; then
+    echo_info "Variável \"DISABLE_DOCKERFILE_CHECK\" está definida como \"true\" no
+    arquivo \"$PROJECT_ENV_PATH_FILE\". Ignorando necessidade de ter um arquivo
+    \"Dockerfile\" no projeto. "
   fi
-  else
-    PROJECT_DOCKERFILE="$PROJECT_ROOT_DIR/$DEFAULT_PROJECT_DOCKERFILE"
 fi
 
 # Obtendo o nome do Dockerfile sample a partir do diretório de $PROJECT_DOCKERFILE e
 # filename de  $PROJECT_DOCKERFILE_SAMPLE
-PROJECT_DOCKERFILE_SAMPLE="$(dirname $PROJECT_DOCKERFILE)/$(basename $DEFAULT_PROJECT_DOCKERFILE_SAMPLE)"
+
+if [ -n "$PROJECT_DOCKERFILE" ]; then
+  PROJECT_DOCKERFILE_SAMPLE="$(dirname $PROJECT_DOCKERFILE)/$(basename $DEFAULT_PROJECT_DOCKERFILE_SAMPLE)"
+fi
+
 
 # Tratamento para obter o path do docker-compose
 dockercompose=$(dict_get "all" "${DICT_COMPOSES_FILES[*]}")
@@ -479,7 +494,7 @@ SERVICE_WEB_NAME=$(get_server_name "web")
 SERVICE_DB_NAME=$(get_server_name "db")
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
-  result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR")
+  result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR" "$INIFILE_PATH")
   _return_func=$?  # Captura o valor de retorno da função
   read tipo_projeto mensagem <<< "$result"
 
@@ -487,19 +502,22 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
     echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
     echo_info "$mensagem"
     if [ -f "$PROJECT_DOCKERFILE" ];  then
-      echo_info "Arquivo com instruções para criar imagem do contêiner da app: $PROJECT_DOCKERFILE"
+      echo_info "Arquivo com instruções para criar imagem do contêiner da
+      app: $PROJECT_DOCKERFILE"
     fi
     if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
       echo_info "Arquivo: modelo Dockerfile: $PROJECT_DOCKERFILE_SAMPLE"
     fi
     if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
-      echo_info "Arquivo de definição que configura os serviços de um aplicativo Docker multi-container: $PROJECT_DOCKERCOMPOSE"
+      echo_info "Arquivo de definição que configura os serviços de um aplicativo
+      Docker multi-container: $PROJECT_DOCKERCOMPOSE"
     fi
     if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
       echo_info "Arquivo modelo docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
     fi
     if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
-      echo_info "Arquivo com definição de variáveis de ambiente utilizado pelo docker-compose: $PROJECT_ENV_PATH_FILE"
+      echo_info "Arquivo com definição de variáveis de ambiente utilizado pelo
+      docker-compose: $PROJECT_ENV_PATH_FILE"
     fi
     if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
       echo_info "Arquivo modelo .env: $PROJECT_ENV_FILE_SAMPLE"
@@ -668,7 +686,7 @@ function verifica_e_configura_dockerfile_project() {
                              "$docker_file_or_compose_path" \
                              "$docker_file_or_compose_sample_path"
 
-        echo "Deseja que este script gere um arquivo modelo (${nome}.sample) para seu projeto?"
+        echo "Deseja que este script gere um arquivo modelo (${tipo_nome}.sample) para seu projeto?"
         read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
         resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')
 
@@ -815,16 +833,16 @@ function verifica_e_configura_dockerfile_project() {
     local docker_file_or_compose_path="$1"
     local env_file_path="$2"
     local tipo="$3"
-    local nome="$4"
+    local tipo_nome="$4"
 
     if [ ! -f "$docker_file_or_compose_path" ]; then
       projeto_dir_path=$(dirname $env_file_path)
       if [ "$tipo" = "dockerfile" ]; then
-        mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo
+        mensagem_opcao="3. Se o arquivo $tipo_nome já existir, definir o path do arquivo
         na variável de ambiente \"DOCKERFILE\" no arquivo $env_file_path.
         Exemplo: DOCKERFILE=${projeto_dir_path}/$(basename $docker_file_or_compose_path)"
       else
-        mensagem_opcao="3. Se o arquivo $nome já existir, definir o path do arquivo
+        mensagem_opcao="4. Se o arquivo $tipo_nome já existir, definir o path do arquivo
         na variável de ambiente \"COMPOSES_FILES\" no arquivo $env_file_path.
   Exemplo:
   COMPOSES_FILES=\"
@@ -833,13 +851,19 @@ function verifica_e_configura_dockerfile_project() {
         "
       fi
 
-      echo_error "Arquivo $docker_file_or_compose_path não encontrado.
+      echo_error "Arquivo $tipo_nome não encontrado.
       Impossível continuar!"
-      echo_warning "O arquivo ${nome} faz parte da arquitetura do \"sdocker\".
-      Há três formas para resolver isso:
-      1. Gerar o arquivo \"$nome\". Para isso, execute novamente o \"sdocker\" (comando sdocker) e siga as orientações.
-      2. Criar o arquivo $docker_file_or_compose_path no diretório raiz $projeto_dir_path do seu projeto.
-      $mensagem_opcao"
+      echo_warning "O arquivo ${tipo_nome} faz parte da arquitetura do \"sdocker\".
+      Há quatro formas para resolver isso:
+      1. Gerar o arquivo \"$tipo_nome\". Para isso, execute novamente o
+      \"sdocker\"  e siga as orientações.
+      2. Criar o arquivo $docker_file_or_compose_path no diretório raiz
+      $projeto_dir_path do seu projeto.
+      $mensagem_opcao
+      4. Se seu projeto não precisa de arquivo \"Dockerfile\", definir a variável
+      \"DISABLE_DOCKERFILE_CHECK=true\" no arquivo $env_file_path para e executar novamente
+      o \"sdocker\".
+      "
       exit 1
     fi
   }
@@ -848,11 +872,11 @@ function verifica_e_configura_dockerfile_project() {
   local resposta
   local base_image
 
-  local nome
+  local tipo_nome
   if [ "$tipo" = "dockerfile" ]; then
-    nome="Dockerfile"
+    tipo_nome="Dockerfile"
   else
-    nome="docker-compose.yml"
+    tipo_nome="docker-compose.yml"
   fi
 
   if [ ! -f ${env_file_path} ]; then
@@ -901,10 +925,10 @@ function verifica_e_configura_dockerfile_project() {
  verificar_existencia_arquivo "$docker_file_or_compose_path" \
    "$env_file_path" \
    "$tipo" \
-   "$nome"
+   "$tipo_nome"
 }
 
-if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$DISABLE_DOCKERFILE_CHECK" = "false" ]; then
   verifica_e_configura_dockerfile_project "dockerfile" \
       "$PROJECT_ENV_PATH_FILE" \
       "$PROJECT_DOCKERFILE" \
@@ -925,9 +949,9 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
       "$DEV_IMAGE" \
       "$INIFILE_PATH"
 
-copy_docker_compose_base "$INIFILE_PATH" $PROJECT_DOCKERCOMPOSE
-
+  copy_docker_compose_base "$INIFILE_PATH" $PROJECT_DOCKERCOMPOSE
 fi
+
 ##############################################################################
 ### INSERINDO VARIÁVEIS COM VALORES PADRÃO NO INICÍO DO ARQUIVO ENV
 ###############################################################################
@@ -969,6 +993,7 @@ fi
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" = "false" ]; then
   imprime_variaveis_env $PROJECT_ENV_PATH_FILE
   echo_warning "Acima segue TODO os valores das variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
+  read -p "Pressione [ENTER] exibir as principáis variáveis."
   echo "
   Segue abaixo as princípais variáveis:
     * Variável de configuração de caminho de arquivos:
@@ -1029,14 +1054,40 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" = "false" ]; then
   echo_warning "Acima segue as principais variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
   echo_info "Antes de prosseguir, revise o conteúdo das variáveis apresentadas acima.
   Edite o arquivo \"$ENV_PATH_FILE\", copie e cole a definição \"REVISADO=true\" para está mensagem não mais ser exibida."
-  echo "Tecle [ENTER] para continuar"
-  read
+  read -p "Pressione [ENTER] para continuar."
   echo_info "Execute novamente o \"sdocker ${ARG_SERVICE} $ARG_COMMAND\"."
   exit 1
 fi
 
 if [ "$REVISADO" = "true" ] && [ "$LOGINFO" = "true" ]; then
   echo_info "Variável REVISADO=true"
+fi
+
+DISABLE_DOCKERFILE_CHECK="${DISABLE_DOCKERFILE_CHECK:-false}"
+
+if [ "$DISABLE_DEV_ENV_CHECK" != "true" ]; then
+  result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR" "$INIFILE_PATH")
+  _return_func=$?  # Captura o valor de retorno da função
+  read TIPO_PROJECT mensagem <<< "$result"
+  if [ $_return_func -eq 1 ]; then
+    declare -A environment_conditions
+    read_section "$INIFILE_PATH" "environment_dev_existence_condition" environment_conditions
+     "${!environment_conditions[*]}"
+    echo_error "Ambiente de desenvolvimento não identificado.
+    Não conseguiu encontrar os indicadores típicos de um projeto
+    ${!environment_conditions[*]}.
+    Certifique-se de estar no diretório raiz do seu projeto.
+    "
+    echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto.
+    OU para projetos personalizados, defina DISABLE_DEV_ENV_CHECK=true no arquivo
+    de configuração $ENV_PATH_FILE e \"sdocker\" execute novamene.
+    "
+    exit 1
+  fi
+  elif [ "$LOGINFO" = "true" ]; then
+      echo_info "Variável \"DISABLE_DEV_ENV_CHECK\" está definida como \"true\" no
+      arquivo \"$PROJECT_ENV_PATH_FILE\". A verificação do ambiente de
+      desenvolvimento foi ignorada."
 fi
 
 ########################## Validações de variáveis definidas no arquivo .env  ##########################
@@ -1066,8 +1117,7 @@ if [ "$USER_NAME" != $(id -un) ]; then
     sed -i "s/^USER_UID=.*/USER_UID=$(id -u)/" "$PROJECT_ENV_PATH_FILE"
     sed -i "s/^USER_GID=.*/USER_GID=$(id -g)/" "$PROJECT_ENV_PATH_FILE"
     echo_success "Correções realizadas com suceso."
-    echo "Tecle quaisquer tecla para continuar"
-    read
+    read -p "Pressione [ENTER] para continuar."
   fi
 fi
 
@@ -1134,8 +1184,9 @@ function get_compose_command() {
     exit 1
   fi
 
+  local file
   for service in ${services[*]}; do
-    local file=$(dict_get "$service" "${dict_composes_files[*]}")
+    file=$(dict_get "$service" "${dict_composes_files[*]}")
     if [ ! -z "$file" ]; then
       compose_filepath="$file"
       dir_path="$(dirname $compose_filepath)"
@@ -1169,8 +1220,8 @@ function get_compose_command() {
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   COMPOSE=$(get_compose_command "$PROJECT_ENV_PATH_FILE" \
       "$PROJECT_DEV_DIR" \
-      "$DICT_SERVICES_COMMANDS" \
-      "$DICT_COMPOSES_FILES" \
+      "${DICT_SERVICES_COMMANDS[*]}" \
+      "${DICT_COMPOSES_FILES[*]}" \
       "$INIFILE_PATH")
 
   _return_func=$?
@@ -1179,6 +1230,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
     exit 1
   fi
 fi
+
 ########################## Validações das variávies para projetos DJANGO ##########################
 sair=0
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
@@ -1261,8 +1313,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJA
 
   if [ ! -f "$SCRIPT_DIR/scripts/init_database.sh" ]; then
     echo_warning "Arquivo $SCRIPT_DIR/scripts/init_database.sh não existe. Sem ele, torna-se impossível realizar dump ou restore do banco.!"
-    echo_warning "Tecle [ENTER] para continuar."
-    read
+    read -p "Pressione [ENTER] para continuar."
   fi
 
   PRE_COMMIT_CONFIG_FILE="${PRE_COMMIT_CONFIG_FILE:-.pre-commit-config.yaml}"
@@ -1294,6 +1345,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJA
     fi
   fi
 fi
+
 ##############################################################################
 ### Funções utilitárias para instanciar os serviços
 ##############################################################################
@@ -1303,9 +1355,11 @@ get_service_names() {
   local _services=($(dict_keys "${DICT_SERVICES_COMMANDS[*]}"))
   local result=()
 
+  local _name_service
+  local _service_name_parse
   for (( idx=${#_services[@]}-1 ; idx>=0 ; idx-- )); do
-    local _name_service=${_services[$idx]}
-    local _service_name_parse=$(dict_get $_name_service "${DICT_ARG_SERVICE_PARSE[*]}")
+    _name_service=${_services[$idx]}
+    _service_name_parse=$(dict_get $_name_service "${DICT_ARG_SERVICE_PARSE[*]}")
 
     for _parsed_service in ${_service_name_parse[*]}; do
       _name_service=$_parsed_service
@@ -1668,11 +1722,6 @@ function docker_build_all() {
   build_python_base $force
   build_python_base_user $force
   build_python_nodejs_base $force
-
-#  if [ "$force" = "false" ]; then
-#    echo "Tecle [ENTER] para continuar"
-#    read
-#  fi
 }
 
 #function check_option_d() {
@@ -1709,6 +1758,8 @@ function container_failed_to_initialize() {
   local erro_resolvido=false
 
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
+
+  # TODO: tratar erro Failed to create network suap_suap: Error response from daemon: invalid pool request: Pool overlaps with other one on this address space
 
   if [ $exit_code -ne 0 ] || echo "$error_message" | grep -iq "error"; then
       # Exibe a mensagem de erro e interrompe a execução do script

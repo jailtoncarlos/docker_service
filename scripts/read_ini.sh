@@ -26,14 +26,52 @@ function read_ini() {
     # Primeiro, encontrar a seção correta
     value=$(sed -nr "/^\[$section\]/,/^\[/{/^$key[ ]*=/ s/.*=[ ]*//p}" "$file")
     echo "$value"
-#    # Se nenhum valor for encontrado, retorna vazio
-#    if [ -z "$value" ]; then
-#        echo "Chave ou seção não encontrada."
-#    else
-#        echo "$value"
-#    fi
 }
 
 # Example usage
 #user=$(read_ini "config.ini" "database" "user")
 #echo "User: $user"
+
+
+# Função para ler todas as chaves e valores de uma seção e preencher o dicionário passado como argumento
+function read_section() {
+    local file=$1
+    local section=$2
+    local -n dict=$3  # Referência ao dicionário passado como argumento
+
+    # Inicializar flag de erro
+    local success=1
+
+    # Verifica se o arquivo existe e se a seção especificada está presente
+    if [[ -f "$file" ]]; then
+        # Extrair todas as chaves e valores da seção especificada
+        while IFS='=' read -r key value; do
+            # Remover espaços em branco ao redor de key e value
+            key=$(echo "$key" | xargs)
+            value=$(echo "$value" | xargs)
+
+            # Adiciona chave-valor ao dicionário se a linha pertence à seção correta
+            if [[ -n "$key" && "$key" != \[*\] ]]; then
+                dict["$key"]="$value"
+                success=0  # Define flag para indicar sucesso
+            fi
+        done < <(sed -n "/^\[$section\]/,/^\[/{/^[^[]/p;}" "$file")
+    fi
+
+    return $success
+}
+# Exemplo de uso:
+# Declaração do dicionário
+#declare -A environment_conditions
+#
+## Chamada da função para preencher o dicionário com a seção "environment_dev_existence_condition"
+#if read_section "config.ini" "environment_dev_existence_condition" environment_conditions; then
+#    # Itera sobre o dicionário para exibir as chaves e valores
+#    for key in "${!environment_conditions[@]}"; do
+#        echo "Chave: $key, Valor: ${environment_conditions[$key]}"
+#    done
+#else
+#    echo "Erro: Seção não encontrada ou arquivo não existe."
+#fi
+
+

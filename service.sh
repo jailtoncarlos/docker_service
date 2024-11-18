@@ -393,38 +393,31 @@ DIR_DUMP=${POSTGRES_DUMP_DIR:-dump}
 WORK_DIR="${WORK_DIR:-/opt/app}"
 
 DISABLE_DOCKERFILE_CHECK="${DISABLE_DOCKERFILE_CHECK:-false}"
+if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$DISABLE_DOCKERFILE_CHECK" = "false" ]; then
+  if [ -n "$DOCKERFILE" ]; then
+    if [ ! -f $DOCKERFILE ]; then
+      echo_warning "Variável \"DOCKERFILE\" identificada no arquivo \"$PROJECT_ENV_PATH_FILE\".
+      Essa variável especifica o caminho (path) do arquivo Dockerfile. No entando,
+      o arquivo especificado \"$DOCKERFILE\" não foi encontrado.
 
-if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
-  if [ "$DISABLE_DOCKERFILE_CHECK" = "false" ]; then
-    if [ -n "$DOCKERFILE" ]; then
-      if [ ! -f $DOCKERFILE ]; then
-        echo_warning "Variável \"DOCKERFILE\" identificada no arquivo \"$PROJECT_ENV_PATH_FILE\".
-        Essa variável especifica o caminho (path) do arquivo Dockerfile. No entando,
-        o arquivo especificado \"$DOCKERFILE\" não foi encontrado.
-
-        Para resover isso, edite o arquivo \"$PROJECT_ENV_PATH_FILE\" e procede com
-        uma das oppções abaixo:
-        1. Incluir o caminho (path) correto do arquivo Dockerfile.
-        2. Remover o valor da variável \"DOCKERFILE\" e executar novamente o
-        utilitário \"sdocker\". Feito isso, o \"sdocker\" irá gerar um novo arquivo
-        Dockerfile para seu projeto.
-        3. Se seu projeto não precisa de arquivo \"Dockerfile\", definir a variável
-        \"DISABLE_DOCKERFILE_CHECK=true\" no arquivo $PROJECT_ENV_PATH_FILE para e executar novamente
-        o \"sdocker\"."
-        echo_error "Arquivo \"$DOCKERFILE\" não existe.
-        Impossível continuar"
-        read -p "Pressione [ENTER] para sair."
-      else
-        # arquivo Dockerfile informado no .env
-        PROJECT_DOCKERFILE="$DOCKERFILE"
-      fi
-      else
-        PROJECT_DOCKERFILE="$PROJECT_ROOT_DIR/$DEFAULT_PROJECT_DOCKERFILE"
+      Para resover isso, edite o arquivo \"$PROJECT_ENV_PATH_FILE\" e procede com
+      uma das oppções abaixo:
+      1. Incluir o caminho (path) correto do arquivo Dockerfile.
+      2. Remover o valor da variável \"DOCKERFILE\" e executar novamente o
+      utilitário \"sdocker\". Feito isso, o \"sdocker\" irá gerar um novo arquivo
+      Dockerfile para seu projeto.
+      3. Se seu projeto não precisa de arquivo \"Dockerfile\", definir a variável
+      \"DISABLE_DOCKERFILE_CHECK=true\" no arquivo $PROJECT_ENV_PATH_FILE para e executar novamente
+      o \"sdocker\"."
+      echo_error "Arquivo \"$DOCKERFILE\" não existe.
+      Impossível continuar"
+      read -p "Pressione [ENTER] para sair."
+    else
+      # arquivo Dockerfile informado no .env
+      PROJECT_DOCKERFILE="$DOCKERFILE"
     fi
-  elif [ "$LOGINFO" = "true" ]; then
-    echo_info "Variável \"DISABLE_DOCKERFILE_CHECK\" está definida como \"true\" no
-    arquivo \"$PROJECT_ENV_PATH_FILE\". Ignorando necessidade de ter um arquivo
-    \"Dockerfile\" no projeto. "
+    else
+      PROJECT_DOCKERFILE="$PROJECT_ROOT_DIR/$DEFAULT_PROJECT_DOCKERFILE"
   fi
 fi
 
@@ -494,30 +487,63 @@ SERVICE_WEB_NAME=$(get_server_name "web")
 SERVICE_DB_NAME=$(get_server_name "db")
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
-  result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR" "$INIFILE_PATH")
-  _return_func=$?  # Captura o valor de retorno da função
-  read tipo_projeto mensagem <<< "$result"
-
   if [ "$LOGINFO" = "true" ];  then
     echo_info "PROJECT_ROOT_DIR: $PROJECT_ROOT_DIR"
-    echo_info "$mensagem"
-    if [ -f "$PROJECT_DOCKERFILE" ];  then
-      echo_info "Arquivo com instruções para criar imagem do contêiner da
-      app: $PROJECT_DOCKERFILE"
+
+    result=$(verificar_comando_inicializacao_ambiente_dev "$PROJECT_ROOT_DIR" "$INIFILE_PATH")
+    _return_func=$?  # Captura o valor de retorno da função
+    read tipo_projeto mensagem <<< "$result"
+    if [ "$_return_func" -ne 0 ]; then
+      echo_warning "$mensagem"  | fold -s -w 85
+    else
+      echo_info "Tipo de projeto: $tipo_projeto"
     fi
+
+    if [ "$DISABLE_DEV_ENV_CHECK" = "true" ]; then
+      echo_info "Variável \"DISABLE_DEV_ENV_CHECK\"  está  definida  como \"true\" no
+      arquivo \"$PROJECT_ENV_PATH_FILE\". A verificação do ambiente de desenvolvimento  foi
+      desativada para este projeto."
+    fi
+    if [ -f "$PROJECT_DOCKERFILE" ];  then
+      echo_info "O arquivo Dockerfile '$PROJECT_DOCKERFILE' contém as instruções passo a passo
+      para criar a imagem do Docker do seu projeto. Ele define  a imagem base, instala
+      as dependências e configura o ambiente de execução."
+    else
+      echo_warning "Arquivo Dockerfile não encontrado. O arquivo Dockerfile é essen-
+      cial para a construção da imagem Docker do seu projeto. Sem  ele,
+      o Docker não  pode criar a imagem do seu projeto."
+    fi
+
+    if [ "$DISABLE_DOCKERFILE_CHECK" = "true" ]; then
+      echo_info "Variável \"DISABLE_DOCKERFILE_CHECK\" está  definida  como  \"true\"
+      no arquivo \"$PROJECT_ENV_PATH_FILE\". Portanto, o arquivo Dockerfile não será  usado
+      para este projeto. "
+    fi
+
     if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
       echo_info "Arquivo: modelo Dockerfile: $PROJECT_DOCKERFILE_SAMPLE"
     fi
     if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
-      echo_info "Arquivo de definição que configura os serviços de um aplicativo
-      Docker multi-container: $PROJECT_DOCKERCOMPOSE"
+      echo_info "O arquivo YAML '$PROJECT_DOCKERCOMPOSE'  define  a  configuração dos
+      containers (serviços) Docker. Ele especifica como  os  containers
+      serão iniciados, como se comunicarão e quais  recursos  comparti-
+      lharão."
+    else
+      echo_warning "Arquivo docker-compose.yml não encontrado. O arquivo
+      docker-compose.yml é essencial para a orquestração dos containers Docker
+      do seu projeto. Sem ele, o Docker não pode iniciar os containers do seu
+      projeto."
     fi
     if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
       echo_info "Arquivo modelo docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
     fi
     if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
-      echo_info "Arquivo com definição de variáveis de ambiente utilizado pelo
+      echo_info "Arquivo com definição de variáveis de  ambiente  utilizado  pelo
       docker-compose: $PROJECT_ENV_PATH_FILE"
+    else
+      echo_warning "Arquivo .env não encontrado. O arquivo .env é essencial para
+      a definição das variáveis de ambiente usadas pelo docker-compose. Sem ele,
+      o Docker não pode iniciar os containers do seu projeto."
     fi
     if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
       echo_info "Arquivo modelo .env: $PROJECT_ENV_FILE_SAMPLE"
@@ -1053,7 +1079,8 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$REVISADO" = "false" ]; then
   "
   echo_warning "Acima segue as principais variáveis definidas no arquivo \"${PROJECT_ENV_PATH_FILE}\"."
   echo_info "Antes de prosseguir, revise o conteúdo das variáveis apresentadas acima.
-  Edite o arquivo \"$ENV_PATH_FILE\", copie e cole a definição \"REVISADO=true\" para está mensagem não mais ser exibida."
+  Edite o arquivo \"  $PROJECT_ENV_PATH_FILE
+\", copie e cole a definição \"REVISADO=true\" para está mensagem não mais ser exibida."
   read -p "Pressione [ENTER] para continuar."
   echo_info "Execute novamente o \"sdocker ${ARG_SERVICE} $ARG_COMMAND\"."
   exit 1
@@ -1080,14 +1107,10 @@ if [ "$DISABLE_DEV_ENV_CHECK" != "true" ]; then
     "
     echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto.
     OU para projetos personalizados, defina DISABLE_DEV_ENV_CHECK=true no arquivo
-    de configuração $ENV_PATH_FILE e \"sdocker\" execute novamene.
+    de configuração $PROJECT_ENV_PATH_FILE e \"sdocker\" execute novamene.
     "
     exit 1
   fi
-  elif [ "$LOGINFO" = "true" ]; then
-      echo_info "Variável \"DISABLE_DEV_ENV_CHECK\" está definida como \"true\" no
-      arquivo \"$PROJECT_ENV_PATH_FILE\". A verificação do ambiente de
-      desenvolvimento foi ignorada."
 fi
 
 ########################## Validações de variáveis definidas no arquivo .env  ##########################
@@ -1345,6 +1368,19 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJA
     fi
   fi
 fi
+
+##############################################################################
+### Outras validações
+##############################################################################
+CHECK_FOR_UPDATES_DAYS="${CHECK_FOR_UPDATES_DAYS:-7}"
+if [ "$LOGINFO" = "true" ]; then
+  echo_info "Verificação de atualização definido para $CHECK_FOR_UPDATES_DAYS dias. Caso  deseje al-
+  terar, defina a variável CHECK_FOR_UPDATES_DAYS no arquivo  de  confi-
+  guração $PROJECT_ENV_PATH_FILE
+."
+fi
+repo_url=$(read_ini "$INIFILE_PATH" "repository" "clone" | tr -d '\r')
+verificar_e_atualizacao_repositorio "$SCRIPT_DIR" "$repo_url" "$CHECK_FOR_UPDATES_DAYS"
 
 ##############################################################################
 ### Funções utilitárias para instanciar os serviços
@@ -2707,8 +2743,8 @@ function main() {
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   if [ "$LOGINFO" = "true" ]; then
-    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". Defina \"LOGINFO=false\" para
-    NÃO mais exibir as mensagens informativas acima!"
+    echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". Defina  \"LOGINFO=false\"  para  NÃO  mais
+    exibir as mensagens informativas acima!"
   else
     echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". Caso deseje exibir mensagens
     informativas, defina a variável \"LOGINFO=true\" no arquivo .env"

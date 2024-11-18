@@ -863,7 +863,7 @@ function verificar_comando_inicializacao_ambiente_dev() {
       echo "Erro: Seção não encontrada ou arquivo não existe."
       return 1
     fi
-    echo "INDEFINIDO Nenhum projeto detectado"
+    echo "INDEFINIDO Não foram encontrados arquivos ou diretórios que indiquem a presença de um ambiente de desenvolvimento."
     return 1
 
     # Exemplo de uso:
@@ -922,5 +922,69 @@ EOF
   fi
 }
 
+# Função para verificar atualizações na branch main de um repositório específico
+function verificar_e_atualizacao_repositorio() {
+    local repo_path="$1"
+    local repo_url="$2"
+    local intervalo_dias="$3"
+    local branch="${4:-main}"
 
+    local check_file="/tmp/ultima_verificacao_atualizacao.txt"
+    local today=$(date +%Y-%m-%d)
+
+    # Verifica se o diretório do repositório existe
+    if [[ ! -d "$repo_path" ]]; then
+        echo_error "O diretório $repo_path não existe."
+        return 1
+    fi
+
+    # Verifica se o intervalo de dias é um número válido
+    if [[ ! "$intervalo_dias" =~ ^[0-9]+$ ]]; then
+        echo_error "O intervalo de dias deve ser um número inteiro."
+        return 1
+    fi
+
+    # Calcula a data limite para a próxima verificação em segundos
+    local limite_tempo=$((intervalo_dias * 86400))  # 86400 segundos em um dia
+
+    # Verifica se já passou o intervalo de dias desde a última verificação
+    if [ -f "$check_file" ]; then
+        local ultima_verificacao=$(cat "$check_file")
+        local diff=$((today - ultima_verificacao))
+
+        if (( diff < limite_tempo )); then
+            #A última verificação foi há menos de $intervalo_dias dias.
+            return 0
+        fi
+    fi
+
+    echo "--- Verificando se o diretório especificado é um repositório Git..."
+    if ! git -C "$repo_path" rev-parse --is-inside-work-tree &>/dev/null; then
+        echo_error "Erro: O diretório $repo_path não é um repositório Git."
+        return 1
+    fi
+
+    echo "--- Verificando se o repositório está atualizado.
+    Aguarde um momento ..."
+    # Buscando atualizações do repositório remoto.
+    git -C "$repo_path" fetch "$repo_url" "$branch"
+    # Comparando a branch local com a branch remota para verificar atualização
+    local status=$(git -C "$repo_path" rev-list --left-right --count HEAD..."origin/$branch")
+    local ahead=$(echo "$status" | awk '{print $1}')
+    local behind=$(echo "$status" | awk '{print $2}')
+
+    if [ $behind -gt 0 ]; then
+        echo_warning "Há uma atualização disponível na branch $branch para o repositório em $repo_path."
+        read -p "Pressione Enter para atualizar ou Ctrl+C para cancelar..."
+
+        # Realiza o pull para atualizar
+        git -C "$repo_path" pull "$repo_url" "$branch"
+        echo "Atualização concluída com sucesso em $repo_path."
+    else
+        echo_info "A versão do utilitário "\sdocker"\ é a mais recente dispónível."
+    fi
+
+    # Atualiza o arquivo de controle com a data de hoje
+    echo "$today" > "$check_file"
+}
 

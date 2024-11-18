@@ -2490,7 +2490,7 @@ function _service_up() {
   fi
 
   if [ "$_service_name" = "all" ]; then
-    _service_all_up" $_option"
+    _service_all_up "$_option"
 #    $COMPOSE up $_option
   elif [ "$_service_name" = "$SERVICE_DB_NAME" ]; then
     _service_db_up "$_service_name" $_option

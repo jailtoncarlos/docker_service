@@ -1468,7 +1468,7 @@ function verify_arguments() {
   check_command_validity "$arg_service_name" "${services_local[*]}" "${empty_array[*]}" "$arg_count" "Serviço" error_message_danger error_message_warning
   local _service_ok=$?
   if [ $_service_ok -eq 1 ]; then
-    return 1
+    return 1 #falha
   fi
 
   if [ $arg_count -eq 1 ]; then
@@ -1493,7 +1493,7 @@ function verify_arguments() {
   check_command_validity "$arg_command" "${specific_commands_local[*]}" "${all_commands_local[*]}" "$arg_count" "Comando" error_message_danger error_message_warning "$arg_service_name"
   local _command_ok=$?
   if [ $_command_ok -eq 1 ]; then
-    return 1
+    return 1 #falha
   fi
   return 0 #sucesso
 }
@@ -1634,19 +1634,20 @@ function process_command() {
   elif [ "$ARG_COMMAND" = "git" ]; then
     command_git "${_service_name}" "$ARG_OPTIONS"
   else
-    echo_warning "Comando $ARG_COMMAND sem função associada"
-
-    declare -a available_commands
-    list_keys_in_section "$INIFILE_PATH" "extensions" available_commands
-
-    for command in "${available_commands[@]}"; do
-      script_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "extensions" "$command")
-      # Verifica e remove ocorrências de "//"
-      script_path=$(echo "$script_path" | sed 's#//*#/#g')
-
-      arg_command=${ARG_COMMAND//-/_}
-      "${SCRIPT_DIR}/${script_path}" "$arg_command" $ARG_OPTIONS
-    done
+    service_exec "${_service_name}" "$ARG_COMMAND" "$ARG_OPTIONS"
+#    echo_warning "Comando $ARG_COMMAND sem função associada"
+#
+#    declare -a available_commands
+#    list_keys_in_section "$INIFILE_PATH" "extensions" available_commands
+#
+#    for command in "${available_commands[@]}"; do
+#      script_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "extensions" "$command")
+#      # Verifica e remove ocorrências de "//"
+#      script_path=$(echo "$script_path" | sed 's#//*#/#g')
+#
+#      arg_command=${ARG_COMMAND//-/_}
+#      "${SCRIPT_DIR}/${script_path}" "$arg_command" $ARG_OPTIONS
+#    done
   fi
 }
 
@@ -2726,7 +2727,7 @@ function main() {
   verify_arguments "$ARG_SERVICE" "$ARG_COMMAND" "${services_local[*]}" "${specific_commands_local[*]}" "${all_commands_local[*]}" "$arg_count" error_danger error_warning
   argumento_valido=$?
 
-  # Verifica o código de saída da função
+  # Verifica se o argumento existe, código diferente de 1.
   if [ $argumento_valido -ne 1 ]; then
     if [ "$TIPO_PROJECT" = "$PROJECT_DJANGO" ]; then
       create_pre_push_hook "$COMPOSE_PROJECT_NAME" "$COMPOSE" "$SERVICE_WEB_NAME" "$USER_NAME" "$WORK_DIR" "$GIT_BRANCH_MAIN"
@@ -2753,4 +2754,3 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   # Chama a função principal
   main "$@"
 fi
-}

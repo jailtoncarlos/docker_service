@@ -765,44 +765,193 @@ function imprime_variaveis_env() {
   #Função: Define a variável como um array somente leitura.
   #Exemplo: declare -ar ARRAY significa que o array ARRAY não pode ser alterado após sua criação.
 }
+##############################################################################
+### TRATAMENTOS PARA ARQUIVOS E DIRETÓRIOS
+##############################################################################
+function check_file_existence() {
+# Função para verificar se existe um arquivo no path fornecido, com extensões opcionais
+  local file_path="$1"
+  shift
+  local extensions=("$@")
+
+  # Verifica se o arquivo especificado no caminho existe
+  if [ -f "$file_path" ]; then
+    return 0  # Arquivo encontrado diretamente
+  fi
+
+  # Caso o arquivo exato não exista e haja extensões fornecidas, verifica com
+  # as extensões
+  if [ "${#extensions[@]}" -gt 0 ]; then
+    for ext in "${extensions[@]}"; do
+      if [ -f "${file_path%.*}.$ext" ]; then
+        return 0  # Arquivo com uma das extensões encontradas
+      fi
+    done
+  fi
+
+  return 1  # Nenhum arquivo com o path ou as extensões fornecidas foi encontrado
+
+  ## Exemplo de uso da função
+  #docker_file_or_compose_path="/caminho/para/docker-compose"
+  #if check_file_existence "$docker_file_or_compose_path" "yml" "yaml"; then
+  #  echo "Arquivo encontrado."
+  #else
+  #  echo "Arquivo não encontrado."
+  #fi
+}
+
+os_path_join() {
+    local path=""
+    local first_arg=true
+
+    for segment in "$@"; do
+        # Remove barras extras no início ou no final de cada segmento, exceto o primeiro
+        segment="${segment#/}"
+        segment="${segment%/}"
+
+        # Concatena o caminho com "/"
+        if [[ "$first_arg" == true ]]; then
+            path="$segment"
+            first_arg=false
+        else
+            path="${path}/${segment}"
+        fi
+    done
+
+    # Garante que mantenha a barra inicial se o primeiro segmento for absoluto
+    [[ "${1:0:1}" == "/" ]] && path="/${path}"
+
+    echo "$path"
+
+  # Exemplo de chamada
+  #final_path=$(os_path_join "/home" "/jailton/" "workstation//" "project//file.txt")
+  #echo "$final_path"
+  ## Saída: /home/jailton/workstation/project/file.txt
+}
 
 ##############################################################################
-### TRATAMENTOS PARA EXTENSÕES
+### TRATAMENTOS PARA PLUGINS DE EXTENSÕES
 ##############################################################################
-function extension_generate_project() {
+function extension_exec_script() {
   local inifile_path=$1
-  shift
-  local command=$1
-  shift
-  local arg_command=$1
-  local option="${*:2}"
-  local arg_count=$#
+  local command=$2
+  local arg_command=$3
+  local options="${*:4}" # Pega todos os argumentos a partir do quarto
 
-  echo ">>> ${FUNCNAME[0]} $arg_command $option"
+  local arg_count=$#
+  local script_path_or_url=""
+  local dir_path=""
+  local url=""
+
+  local script_name="${arg_command}.sh"
+
+  echo ">>> ${FUNCNAME[0]} $inifile_path $command $arg_command $optionss"
 
   declare -a comandos_disponiveis
   list_keys_in_section "$inifile_path" "extensions" comandos_disponiveis
 
-  if [ "$arg_count" -eq 0 ]; then
-    echo_error "Deve informar o nome do projeto base que deseja gerar."
-    echo_warning "Projetos base disponíveis: ${comandos_disponiveis[*]}"
+  if [ -z "$arg_command" ]; then
+    echo_error "Nome do projeto base não existe. Impossível continuar."
+    echo_info "Deve informar o nome do projeto base que deseja gerar.
+    Projetos base disponíveis: ${comandos_disponiveis[*]}"
     exit 1
-  elif [ "$arg_count" -ge 1 ]; then
+  fi
+
+  if [ "$arg_count" -ge 1 ]; then
     if ! in_array "$arg_command" "${comandos_disponiveis[*]}"; then
       echo_error "Argumento [$arg_command] não existe para o comando [$command]."
       echo_warning "Projetos base disponíveis: ${comandos_disponiveis[*]}"
       exit 1
     else
-      local script_path
-      script_path=$(get_filename_path "$PROJECT_DEV_DIR" "$inifile_path" "extensions" "$arg_command")
-      echo_warning "Executando script $script_path"
+      script_path_or_url=$(get_filename_path "$PROJECT_DEV_DIR" "$inifile_path" "extensions" "$arg_command")
+#      echo_warning "Executando script $script_path_or_url"
 
-      if [ -f "$script_path" ] && [ -x "$script_path" ]; then
-        shift
-        "$script_path" $option
+      # Verifica se o arquivo existe
+      if [ ! -f "$script_path_or_url" ]; then
+          # Explicação
+          # 1. ^https?://: Verifica se a variável começa com http:// ou https://
+          #   (URLs HTTP ou HTTPS). O ? indica que o s é opcional.
+          # 2.^[^@]+@[^:]+:.+: Verifica o formato SSH (usuario@host:repositorio).
+          #   Esse regex assegura que há:
+          #   - [^@]+: Um conjunto de caracteres antes do @.
+          #   - @: Um caractere @ obrigatório.
+          #   - [^:]+: Um conjunto de caracteres antes do : obrigatório.
+          #   - :.+: Um : seguido por mais caracteres.
+          if echo "$script_path_or_url" | grep -qE '^https?://'; then
+              echo_info "URL HTTP(S) detectada: $script_path_or_url"
+          elif echo "$script_path_or_url" | grep -qE '^[^@]+@[^:]+:.+'; then
+              echo_info "URL SSH detectada: $script_path_or_url"
+          else
+              echo_error "Script $script_path_or_url não encontrado"
+              echo_info "Verifique o caminho (path) do arquivo do script."
+              exit 1
+          fi
+          url=$script_path_or_url
+
+          # Como foi passado a url do script, torna-se obrigatório informar
+          # um path para onde o projeto será gerado.
+          # %% *: Remove tudo após o primeiro espaço encontrado na string option,
+          # retornando apenas o primeiro argumento.
+          dir_path="${options%% *}"
+          if [ -z "$dir_path" ]; then
+            echo_error "Diretório não informado."
+            echo_info "Informe o diretório onde o projeto será gerado."
+            exit 1
+          fi
+
+          if [ ! -d "$dir_path" ]; then
+            echo_error "Diretório \"${dir_path}\" não encontrado."
+            echo_info "Informe um diretório válido onde o projeto será gerado."
+            exit 1
+          fi
+
+           echo "--- Iniciando o download do script $script_path_or_url no
+           diretório $dir_path ..."
+
+          # Obter o segmento da url após a última barra
+          url_last_part=$(basename "$url")
+          dir_destination_path=$(os_path_join "$dir_path" "$url_last_part")
+
+          # Tenta clonar o repositório
+          git clone "$url" "$dir_destination_path"
+          # Código de erro 128 para "path already exists and is not empty"
+          if [[ $? -eq 128 ]]; then
+            echo_warning "Diretório $dir_destination_path já existe e não está vazio."
+          fi
+
+          script_path=$(os_path_join "$dir_destination_path" "$script_name")
+
+          # Verifica se o clone foi bem-sucedido
+          if [ -f "$script_path" ]; then
+              # Dá permissão de execução
+              chmod +x "$script_path"
+          else
+              echo_error "Erro: O script $script_path não foi encontrado."
+              echo_info "Possíveis causas:
+              1. Verifique se o arquivo de script existe no repositório local,
+              diretório \"${dir_destination_path}\".
+              2. Verifique se o arquivo existe no repositório ou se seu nome foi
+              renomeado. Se sim, atualize o repositório local
+              git pull origin <<branch>>
+              3. Se o script foi removido, entre em contato com o autor do script."
+              exit 1
+          fi
       else
-        echo_error "O arquivo $script_path não existe ou não tem permissão de execução."
-        exit 99
+        script_path=$script_path_or_url
+      fi
+
+      echo_info "Script $script_path detectado. Iniciando a execução..."
+      if [ -x "$script_path" ]; then
+            # Dá permissão de execução
+            chmod +x "$script_path"
+      fi
+
+      if [ -f "$script_path" ]; then
+        echo ">>> $script_path $options"
+        "$script_path" $options
+      else
+        echo_error "O arquivo $script_path não encontrado."
+        exit 1
       fi
     fi
   fi
@@ -922,21 +1071,21 @@ EOF
   fi
 }
 
-# Função para verificar atualizações na branch main de um repositório específico
 function verificar_e_atualizacao_repositorio() {
+# Função para verificar atualizações na branch main de um repositório específico
     local repo_path="$1"
     local repo_url="$2"
     local intervalo_dias="$3"
     local branch="${4:-main}"
-
-    local check_file="/tmp/ultima_verificacao_atualizacao.txt"
-    local today=$(date +%Y-%m-%d)
 
     # Verifica se o diretório do repositório existe
     if [[ ! -d "$repo_path" ]]; then
         echo_error "O diretório $repo_path não existe."
         return 1
     fi
+
+    local check_file="/tmp/ultima_verificacao_atualizacao.txt"
+    local today=$(date +%Y-%m-%d)
 
     # Verifica se o intervalo de dias é um número válido
     if [[ ! "$intervalo_dias" =~ ^[0-9]+$ ]]; then
@@ -987,4 +1136,5 @@ function verificar_e_atualizacao_repositorio() {
     # Atualiza o arquivo de controle com a data de hoje
     echo "$today" > "$check_file"
 }
+
 

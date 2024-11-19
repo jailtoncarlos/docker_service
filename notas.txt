@@ -11,9 +11,8 @@ Explicação:
  Quando você coloca a variável $_option entre aspas duplas, ela é tratada como
  uma única entidade (uma única string).
    Se $_option contiver múltiplos argumentos (por exemplo, "--build --detach"),
-   ao colocar as aspas,
-   o Bash vai interpretar tudo como um único argumento. Isso é o que
-   provavelmente está causando o erro.
+   ao colocar as aspas, o Bash vai interpretar tudo como um único argumento.
+   Isso é o que provavelmente está causando o erro.
  
  Exemplo:
  

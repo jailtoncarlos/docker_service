@@ -13,11 +13,13 @@ function check_and_load_scripts() {
 
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   scriptsh="$script_dir/${filename_script}"
+  scriptsh="${scriptsh//\/\//\/}"  # Remove barras duplas
 
   if [ ! -f "$scriptsh" ]; then
     echo -e "$RED_COLOR DANG: Shell script $scriptsh não existe.\nEsse arquivo possui as funções utilitárias necessárias.\nImpossível continuar!$NO_COLOR"
     exit 1
   else
+    echo ">>> source $scriptsh"
     source "$scriptsh"
   fi
 }
@@ -35,10 +37,13 @@ if ! verifica_instalacao; then
     exit 1
 fi
 
-
-PROJECT_DEV_DIR=$PROJECT_ROOT_DIR
 PROJECT_NAME=$(basename $PROJECT_ROOT_DIR)
-DEFAULT_BASE_DIR="$PROJECT_ROOT_DIR/$PROJECT_NAME"
+
+DEFAULT_BASE_DIR=$(os_path_join "$PROJECT_ROOT_DIR" "$PROJECT_NAME")
+if [ ! -d "$DEFAULT_BASE_DIR" ]; then
+  DEFAULT_BASE_DIR="$PROJECT_ROOT_DIR"
+fi
+
 INIFILE_PATH="${SCRIPT_DIR}/config.ini"
 LOCAL_INIFILE_PATH="${SCRIPT_DIR}/config-local.ini"
 if [ ! -f "$LOCAL_INIFILE_PATH" ]; then
@@ -50,50 +55,61 @@ PROJECT_DJANGO=$(read_ini "$INIFILE_PATH" "environment_dev_names" "django" | tr 
 DISABLE_DOCKERFILE_CHECK="false"
 DISABLE_DEV_ENV_CHECK="false"
 
-command="generate-project"
+COMMAND_GENERATE_PROJECT="generate-project"
+# remove o primeiro argumento que o comando "generate-project"
 arg_command=$1
-if [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ] && [ "$arg_command" == "$command" ]; then
-  shift
-  option=$*
-  extension_generate_project "$INIFILE_PATH" $command $option
+if [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ] && [ "$arg_command" == "$COMMAND_GENERATE_PROJECT" ]; then
+  shift # remove o primeiro argumento
+  options=$* # pega todos os argumentos restantes
+
+  # O $options está aspas duplas, ao colocar as aspas, o Bash vai interpretar
+  # tudo como um único argumento e não uma lista de argumentos.
+  extension_exec_script "$INIFILE_PATH" "$arg_command" $options
 
 elif [ "$PROJECT_ROOT_DIR" = "$SCRIPT_DIR" ]; then
   echo_success "Configurações iniciais do script definidas com sucesso."
   echo_info "Execute o comando \"sdocker\" no diretório raiz do seu projeto.
-  ou use a opção \"generate-project\""
+  ou use o comando \"${COMMAND_GENERATE_PROJECT}\" para gerar um projeto base."
   exit 1
 fi
 TIPO_PROJECT=${TIPO_PROJECT:-PROJECT_DJANGO}
 
 ############## Tratamento env file ##############
-filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$LOCAL_INIFILE_PATH" "envfile" "$PROJECT_NAME")
-PROJECT_ENV_PATH_FILE="${filename_path:-.env}"
+DEFAULT_PROJECT_ENV=".env"
+DEFAULT_PROJECT_ENV_SAMPLE=".env.sample"
 
-filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$LOCAL_INIFILE_PATH" "envfile_sample" "$PROJECT_NAME" )
-PROJECT_ENV_FILE_SAMPLE="${filename_path:-.env.sample}"
+PROJECT_ENV_PATH_FILE=$(get_filename_path "$PROJECT_ROOT_DIR" "$LOCAL_INIFILE_PATH" "envfile" "$PROJECT_NAME")
+if [ -z "$PROJECT_ENV_PATH_FILE" ]; then
+  PROJECT_ENV_PATH_FILE=$(os_path_join "$PROJECT_ROOT_DIR" "${DEFAULT_PROJECT_ENV}")
+fi
+
+PROJECT_ENV_FILE_SAMPLE=$(get_filename_path "$PROJECT_ROOT_DIR" "$LOCAL_INIFILE_PATH" "envfile_sample" "$PROJECT_NAME" )
+if [ -z "$PROJECT_ENV_FILE_SAMPLE" ]; then
+  PROJECT_ENV_FILE_SAMPLE=$(os_path_join "$PROJECT_ROOT_DIR" "$DEFAULT_PROJECT_ENV")
+fi
 
 _project_file=$(read_ini "$LOCAL_INIFILE_PATH" "envfile" "$PROJECT_NAME" | tr -d '\r')
 if [ "$(dirname $PROJECT_ENV_FILE_SAMPLE)" != "$(dirname $PROJECT_ENV_PATH_FILE)" ] && [ -z "$PROJECT_ENV_PATH_FILE" ] ; then
-  echo_error "O diretório do arquivo .env é diferente do arquivo $(basename $PROJECT_ENV_FILE_SAMPLE). Impossível continuar"
-  echo_warning "Informe o path do arquivo .env nas configurações do \"sdocker\".
+  echo_error "O diretório do arquivo ${DEFAULT_PROJECT_ENV} é diferente do arquivo $(basename $PROJECT_ENV_FILE_SAMPLE). Impossível continuar"
+  echo_warning "Informe o path do arquivo ${DEFAULT_PROJECT_ENV} nas configurações do \"sdocker\".
   Para isso, adicione a linha <<nome_projeto>>=<<path_arquivo_env_sample>> na seção \"[envfile]\" no arquivo de
   configuração ${LOCAL_INIFILE_PATH}.
-  Exemplo: ${PROJECT_NAME}=$(dirname $PROJECT_ENV_FILE_SAMPLE)/.env"
+  Exemplo: ${PROJECT_NAME}=$(dirname $PROJECT_ENV_FILE_SAMPLE)/${DEFAULT_PROJECT_ENV}"
   exit 1
 fi
 
 ############## Tratamento Dockerfile ##############
-filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockerfile" "$PROJECT_NAME")
+filename_path=$(get_filename_path "$PROJECT_ROOT_DIR" "$INIFILE_PATH" "dockerfile" "$PROJECT_NAME")
 DEFAULT_PROJECT_DOCKERFILE=$filename_path
 
-filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockerfile_sample" "$PROJECT_NAME")
+filename_path=$(get_filename_path "$PROJECT_ROOT_DIR" "$INIFILE_PATH" "dockerfile_sample" "$PROJECT_NAME")
 DEFAULT_PROJECT_DOCKERFILE_SAMPLE=$filename_path
 
 ############## Tratamento docker-compose ##############
-filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockercompose" "$PROJECT_NAME")
+filename_path=$(get_filename_path "$PROJECT_ROOT_DIR" "$INIFILE_PATH" "dockercompose" "$PROJECT_NAME")
 DEFAULT_PROJECT_DOCKERCOMPOSE=$filename_path
 
-filename_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "dockercompose_sample" "$PROJECT_NAME")
+filename_path=$(get_filename_path "$PROJECT_ROOT_DIR" "$INIFILE_PATH" "dockercompose_sample" "$PROJECT_NAME")
 DEFAULT_PROJECT_DOCKERCOMPOSE_SAMPLE=$filename_path
 
 ##############################################################################
@@ -119,10 +135,12 @@ function verifica_e_configura_env() {
     local default_project_dockerfile="$2"
     local project_name="$3"
     local config_inifile="$4"
+    local local_config_inifile="$5"
 
     # Função para verificar e retornar o caminho correto do arquivo de requirements
     function get_requirements_file() {
         # Verificar se o arquivo requirements.txt existe
+#        if [ -f "$(os_path_join "$project_root_dir" "requirements.txt")" ]; then
         if [ -f "$project_root_dir/requirements.txt" ]; then
             echo "requirements.txt"
             return
@@ -147,6 +165,7 @@ function verifica_e_configura_env() {
     # Definir variáveis de ambiente
     local default_requirements_file #SC2155
     project_root_dir="$(pwd -P)"
+    # TODO: $DEFAULT_BASE_DIR
     local default_base_dir="$project_root_dir/$project_name"
     local settings_local_file_sample="local_settings_sample.py"
 
@@ -159,9 +178,9 @@ function verifica_e_configura_env() {
 
     # Verificar se o arquivo de exemplo de ambiente existe
     if [ ! -f "${project_env_file_sample}" ]; then
-        echo_error "Arquivo ${project_env_file_sample} não encontrado. Impossível continuar!"
-        echo_info "Esse arquivo é o modelo com as configurações mínimas necessárias para os containers funcionarem.
-       Deseja que este script GERE um arquivo modelo padrão para seu projeto?"
+        echo_error "Arquivo \"${project_env_file_sample:-$DEFAULT_PROJECT_ENV_SAMPLE}\" não encontrado. Impossível continuar!"
+        echo_info "Este arquivo é essencial para configurar as variáveis de ambiente para os containers funcionarem.
+        Deseja que este script GERE um arquivo de configuração padrão para seu projeto?"
         # -r: Impede o read de interpretar barras invertidas (\) como caracteres
         # de escape, o que garante que a entrada do usuário seja lida exatamente
         # como digitada.
@@ -249,20 +268,24 @@ EOF
 
     # Verificar novamente se o arquivo de ambiente foi criado
     if [ ! -f "${project_env_file_sample}" ]; then
-        echo_error "Arquivo ${project_env_file_sample} não encontrado. Impossível continuar!"
-        echo_warning "Ter um modelo de um arquivo \".env\" faz parte da arquitetura do  \"sdocker\".
+        echo_error "Arquivo \"${project_env_file_sample:-$DEFAULT_PROJECT_ENV_SAMPLE}\" não encontrado. Impossível continuar!"
+        echo_warning "Ter um modelo de um arquivo \"${DEFAULT_PROJECT_ENV}\" faz parte da arquitetura do \"sdocker\".
         Há duas soluções para resolver isso:
         1. Adicionar o arquivo $project_env_file_sample no diretório raiz (${project_root_dir}) do seu projeto.
         2. Informar o path do arquivo nas configurações do \"sdocker\".
         Para isso, adicione a linha <<nome_projeto>>=<<path_arquivo_env_sample>> na seção \"[envfile_sample]\" no arquivo de
-        configuração ${config_inifile}.
-        Exemplo: ${project_name}=${project_root_dir}/.env.dev.sample"
+        configuração ${local_config_inifile}.
+        Exemplo: ${project_name}=${project_root_dir}/${DEFAULT_PROJECT_ENV_SAMPLE}"
         exit 1
     fi
 }
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
-  verifica_e_configura_env "$PROJECT_ENV_FILE_SAMPLE" "$DEFAULT_PROJECT_DOCKERFILE" "$PROJECT_NAME" "$INIFILE_PATH"
+  verifica_e_configura_env "$PROJECT_ENV_FILE_SAMPLE" \
+      "$DEFAULT_PROJECT_DOCKERFILE" \
+      "$PROJECT_NAME" \
+      "$INIFILE_PATH" \
+      "$LOCAL_INIFILE_PATH"
 fi
 ##############################################################################
 ### EXPORTANDO VARIÁVEIS DE AMBIENTE DO ARQUIVO ENV
@@ -280,36 +303,65 @@ configura_env() {
 
   sleep .5
 
+  # Remove comentários e linhas vazias
+  clean_env_file=$(grep -v '^\s*#' "${project_env_path_file}" | grep -v '^\s*$')
+
+  # Manter tudo em uma linha e sem aspas extras ao final de variáveis.
+  # 1:a; N; $!ba; — Mesma funcionalidade, juntando todas as linhas.
+  # 2. s/=\s*"\s*\n\s*/="/g; — Remove a quebra de linha após = e a primeira "
+  #     que abre o valor.
+  # 3. s/"\s*\n\s*/ /g; — Remove quebras de linha dentro do valor entre aspas,
+  #     substituindo-as por espaços.
+  # 4. s/\n/ /g — Remove quebras de linha remanescentes.
+  # 5. s/="\s*/=/g — Remove qualquer " (aspas e espaços) no início de valores
+  #   ou ao final do valor da variável, mantendo o padrão VARIAVEL=valor sem
+  #   aspas extras.
+  # 6. s/\"$// — Este comando remove uma aspas dupla (") ao final da string,
+  #    se houver.
+
+#  clean_env_file=$(echo "$clean_env_file" | sed -E ':a;N;$!ba;s/=\s*"\s*\n\s*/="/g; s/"\s*\n\s*/ /g; s/\n/ /g; s/="\s*/=/g; s/\"$//')
+
+#  echo "$clean_env_file"
+
+
+
   # Processa o arquivo linha por linha, exportando cada variável
-  # xargs -0 lê o conteúdo do arquivo ${project_env_path_file} (.env), assumindo
+  # xargs -0 lê o conteúdo do arquivo ${project_env_path_file} (${DEFAULT_PROJECT_ENV}), assumindo
   # que as variáveis estão no formato VARIAVEL=valor, e tenta exportá-las em
   # uma única linha. O -0 instrui o xargs a processar a entrada de maneira
   # que cada linha de variável seja tratada como uma única entidade
   # 2> /dev/null: Redireciona erros para /dev/null, ignorando mensagens de erro
   # (caso existam variáveis malformadas ou o arquivo esteja vazio).
-  export $(xargs -0 < "${project_env_path_file}") 2> /dev/null
+  export $(echo "${clean_env_file}" | xargs -0) 2> /dev/null
 
   # Carrega o conteúdo do arquivo env diretamente no script
   # &>/dev/null: Redireciona tanto a saída padrão quanto os erros para /dev/null,
   # suprimindo mensagens de erro e saída do comando.
-  source "${project_env_path_file}" &>/dev/null
+  source "${project_env_path_file}" #&>/dev/null
 
   # Imprime as variáveis de ambiente
-#  imprime_variaveis_env "${project_env_path_file}"
+  # imprime_variaveis_env "${project_env_path_file}"
 }
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   configura_env "$PROJECT_ENV_FILE_SAMPLE" "$PROJECT_ENV_PATH_FILE"
   _return_func=$?
   if [ "$_return_func" -ne 0 ]; then
-    echo_error "Problema relacionado ao conteúdo do arquivo .env."
-    echo_warning "Certifique-se de que o arquivo .env está formatado corretamente, especialmente
-    para variáveis multilinha, que devem ser delimitadas corretamente. O uso de aspas (\") ou
-    barras invertidas (\\) para indicar continuação de linha deve ser consistente.
-    "
+    echo_error "Problema relacionado ao conteúdo do arquivo
+    ${project_env_path_file:-$DEFAULT_PROJECT_ENV}."
+    echo_warning "Certifique-se de que o arquivo
+    ${project_env_path_file:-$DEFAULT_PROJECT_ENV}  está formatado corretamente,
+    especialmente para variáveis multilinha, que devem ser delimitadas corretamente.
+    O uso de aspas (\\\") ou barras invertidas (\\\\) para indicar continuação de
+    linha deve ser consistente."
     exit 1
   fi
+#check_file_existence "$PROJECT_ENV_PATH_FILE" "yml" "yaml";
+#imprime_variaveis_env "${project_env_path_file}"
+
 fi
+
+
 ##############################################################################
 ### CONVERTENDO ARRAY DO .ENV NA TAD DICT
 ##############################################################################
@@ -428,7 +480,6 @@ if [ -n "$PROJECT_DOCKERFILE" ]; then
   PROJECT_DOCKERFILE_SAMPLE="$(dirname $PROJECT_DOCKERFILE)/$(basename $DEFAULT_PROJECT_DOCKERFILE_SAMPLE)"
 fi
 
-
 # Tratamento para obter o path do docker-compose
 dockercompose=$(dict_get "all" "${DICT_COMPOSES_FILES[*]}")
 
@@ -509,7 +560,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
       para criar a imagem do Docker do seu projeto. Ele define  a imagem base, instala
       as dependências e configura o ambiente de execução."
     else
-      echo_warning "Arquivo Dockerfile não encontrado. O arquivo Dockerfile é essen-
+      echo_warning "Arquivo ${PROJECT_DOCKERFILE:-$DEFAULT_PROJECT_DOCKERFILE} não encontrado. O arquivo Dockerfile é essen-
       cial para a construção da imagem Docker do seu projeto. Sem  ele,
       o Docker não  pode criar a imagem do seu projeto."
     fi
@@ -520,30 +571,31 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
       para este projeto. "
     fi
 
-    if [ -f "$PROJECT_DOCKERFILE_SAMPLE" ]; then
+    if check_file_existence "$PROJECT_DOCKERFILE_SAMPLE" "yml" "yaml"; then
       echo_info "Arquivo: modelo Dockerfile: $PROJECT_DOCKERFILE_SAMPLE"
     fi
-    if [ -f "$PROJECT_DOCKERCOMPOSE" ]; then
+    if check_file_existence "$PROJECT_DOCKERCOMPOSE" "yml" "yaml"; then
       echo_info "O arquivo YAML '$PROJECT_DOCKERCOMPOSE'  define  a  configuração dos
       containers (serviços) Docker. Ele especifica como  os  containers
       serão iniciados, como se comunicarão e quais  recursos  comparti-
       lharão."
     else
-      echo_warning "Arquivo docker-compose.yml não encontrado. O arquivo
+      echo_warning "Arquivo ${PROJECT_DOCKERCOMPOSE:-$DEFAULT_PROJECT_DOCKERCOMPOSE} não encontrado. O arquivo
       docker-compose.yml é essencial para a orquestração dos containers Docker
       do seu projeto. Sem ele, o Docker não pode iniciar os containers do seu
       projeto."
     fi
     if [ -f "$PROJECT_DOCKERCOMPOSE_SAMPLE" ]; then
-      echo_info "Arquivo modelo docker-compose.yml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
+      echo_info "Arquivo modelo docker-compose.yAml sample: $PROJECT_DOCKERCOMPOSE_SAMPLE"
     fi
     if [ -f "$PROJECT_ENV_PATH_FILE" ]; then
       echo_info "Arquivo com definição de variáveis de  ambiente  utilizado  pelo
       docker-compose: $PROJECT_ENV_PATH_FILE"
     else
-      echo_warning "Arquivo .env não encontrado. O arquivo .env é essencial para
-      a definição das variáveis de ambiente usadas pelo docker-compose. Sem ele,
-      o Docker não pode iniciar os containers do seu projeto."
+      echo_warning "Arquivo \"${PROJECT_ENV_PATH_FILE:-$DEFAULT_PROJECT_ENV}\" não
+      encontrado. O arquivo ${DEFAULT_PROJECT_ENV} é essencial para a definição das
+      variáveis de ambiente usadas pelo docker-compose. Sem ele, o Docker não pode
+      iniciar os containers do seu projeto."
     fi
     if [ -f "$PROJECT_ENV_FILE_SAMPLE" ]; then
       echo_info "Arquivo modelo .env: $PROJECT_ENV_FILE_SAMPLE"
@@ -566,7 +618,7 @@ function copy_docker_compose_base() {
 #TODO tratar se está previsto a existência do docker-compose-base.yml
 # SE sim, caso o arquivo não existar, gerar mensagem de erro e ajustes
 #  compose_filepath=$(obter_caminho_dockercompose_base "$PROJECT_ENV_PATH_FILE" \
-#    "$PROJECT_DEV_DIR" \
+#    "$PROJECT_ROOT_DIR" \
 #    "$INIFILE_PATH")
 #  return=$?
 
@@ -902,24 +954,24 @@ function verifica_e_configura_dockerfile_project() {
   if [ "$tipo" = "dockerfile" ]; then
     tipo_nome="Dockerfile"
   else
-    tipo_nome="docker-compose.yml"
+    tipo_nome="docker-compose.yaml"
   fi
 
   if [ ! -f ${env_file_path} ]; then
-    echo_error "Arquivo $env_file_path não encontrado. Impossível continuar!"
+    echo_error "Arquivo \"${env_file_path:-$DEFAULT_PROJECT_ENV}\" não encontrado. Impossível continuar!"
     exit 1
   fi
 
-  if [ ! -f "$docker_file_or_compose_sample_path" ]; then
+  if ! check_file_existence "$docker_file_or_compose_sample_path" "yml" "yaml"; then
     if [ "$LOGINFO" = "true" ]; then
-      echo_warning "Arquivo $docker_file_or_compose_sample_path não encontrado."
+      echo_warning "Arquivo ${docker_file_or_compose_sample_path:-$tipo_nome sample} não encontrado."
     fi
   elif [ "$revisado" = "true" ]; then
     echo_warning "Arquivo $docker_file_or_compose_sample_path encontrado."
   fi
 
-  if [ ! -f "$docker_file_or_compose_path" ]; then
-    echo_warning "Arquivo $docker_file_or_compose_path não encontrado."
+  if ! check_file_existence "$docker_file_or_compose_path" "yml" "yaml"; then
+    echo_warning "Arquivo ${docker_file_or_compose_path:-$tipo_nome} não encontrado."
   fi
 
   verifica_e_copia_modelo "$tipo" \
@@ -1148,7 +1200,7 @@ fi
 # Função para obter o caminho do arquivo docker-compose
 function obter_caminho_dockercompose_base() {
   local project_env_path_file="$1"
-  local project_dev_dir="$2"
+  local project_root_dir="$2"
   local config_inifile="$3"
 
   local project_env_dir="$(dirname $project_env_path_file)"
@@ -1162,7 +1214,7 @@ function obter_caminho_dockercompose_base() {
 
   # Verifica se o arquivo existe no diretório do ambiente; se não, verifica no diretório de desenvolvimento
   if [ ! -f "$compose_filepath" ]; then
-    compose_filepath="${project_dev_dir}/${dockercompose_base}"
+    compose_filepath="${project_root_dir}/${dockercompose_base}"
 
     # Se o arquivo não existir em nenhum dos diretórios, define compose_filepath como vazio
     if [ ! -f "$compose_filepath" ]; then
@@ -1189,7 +1241,7 @@ function obter_caminho_dockercompose_base() {
 
 function get_compose_command() {
   local project_env_path_file="$1"
-  local project_dev_dir="$2"
+  local project_root_dir="$2"
   local dict_services_commands="$3"
   local dict_composes_files="$4"
   local config_inifile="$5"
@@ -1203,7 +1255,7 @@ function get_compose_command() {
   local project_env_dir="$(dirname $project_env_path_file)"
 
   if [ ! -f "$project_env_path_file" ]; then
-    echo_error "Arquivo $project_env_path_file não encontrado. Impossível continuar!"
+    echo_error "Arquivo \"${project_env_path_file:-$DEFAULT_PROJECT_ENV}\" não encontrado. Impossível continuar!"
     exit 1
   fi
 
@@ -1217,8 +1269,8 @@ function get_compose_command() {
         compose_filepath=$project_env_dir/$file
       fi
 
-      if [ ! -f "$compose_filepath" ]; then
-        echo_error "Arquivo $compose_filepath não encontrado. Impossível continuar!"
+      if ! check_file_existence "$compose_filepath" "yml" "yaml"; then
+        echo_error "Arquivo ${compose_filepath:$DEFAULT_PROJECT_DOCKERCOMPOSE} não encontrado. Impossível continuar!"
         exit 1
       fi
 
@@ -1227,7 +1279,7 @@ function get_compose_command() {
   done
 
   compose_filepath=$(obter_caminho_dockercompose_base "$project_env_dir" \
-    "$project_dev_dir" \
+    "$project_root_dir" \
     "$config_inifile")
 
   if [ -f "$compose_filepath" ]; then
@@ -1242,7 +1294,7 @@ function get_compose_command() {
 
 if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
   COMPOSE=$(get_compose_command "$PROJECT_ENV_PATH_FILE" \
-      "$PROJECT_DEV_DIR" \
+      "$PROJECT_ROOT_DIR" \
       "${DICT_SERVICES_COMMANDS[*]}" \
       "${DICT_COMPOSES_FILES[*]}" \
       "$INIFILE_PATH")
@@ -1340,7 +1392,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ] && [ "$TIPO_PROJECT" = "$PROJECT_DJA
   fi
 
   PRE_COMMIT_CONFIG_FILE="${PRE_COMMIT_CONFIG_FILE:-.pre-commit-config.yaml}"
-  file_precommit_config="${PROJECT_DEV_DIR}/${PRE_COMMIT_CONFIG_FILE}"
+  file_precommit_config="${PROJECT_ROOT_DIR}/${PRE_COMMIT_CONFIG_FILE}"
   if [ ! -f "$file_precommit_config" ]; then
     echo ""
     echo_error "Arquivo $file_precommit_config não existe!"
@@ -1376,8 +1428,7 @@ CHECK_FOR_UPDATES_DAYS="${CHECK_FOR_UPDATES_DAYS:-7}"
 if [ "$LOGINFO" = "true" ]; then
   echo_info "Verificação de atualização definido para $CHECK_FOR_UPDATES_DAYS dias. Caso  deseje al-
   terar, defina a variável CHECK_FOR_UPDATES_DAYS no arquivo  de  confi-
-  guração $PROJECT_ENV_PATH_FILE
-."
+  guração $PROJECT_ENV_PATH_FILE"
 fi
 repo_url=$(read_ini "$INIFILE_PATH" "repository" "clone" | tr -d '\r')
 verificar_e_atualizacao_repositorio "$SCRIPT_DIR" "$repo_url" "$CHECK_FOR_UPDATES_DAYS"
@@ -1634,20 +1685,48 @@ function process_command() {
   elif [ "$ARG_COMMAND" = "git" ]; then
     command_git "${_service_name}" "$ARG_OPTIONS"
   else
-    service_exec "${_service_name}" "$ARG_COMMAND" "$ARG_OPTIONS"
-#    echo_warning "Comando $ARG_COMMAND sem função associada"
-#
-#    declare -a available_commands
-#    list_keys_in_section "$INIFILE_PATH" "extensions" available_commands
-#
-#    for command in "${available_commands[@]}"; do
-#      script_path=$(get_filename_path "$PROJECT_DEV_DIR" "$INIFILE_PATH" "extensions" "$command")
-#      # Verifica e remove ocorrências de "//"
-#      script_path=$(echo "$script_path" | sed 's#//*#/#g')
-#
-#      arg_command=${ARG_COMMAND//-/_}
-#      "${SCRIPT_DIR}/${script_path}" "$arg_command" $ARG_OPTIONS
-#    done
+    echo_warning "Comando $ARG_COMMAND sem função associada"
+
+    # Busca os scripts associados aos comandos disponíveis em uma seção
+    # específica do arquivo de configuração LOCAL_INIFILE_PATH, normaliza os caminhos
+    # e executa cada script, passando como argumentos o comando ajustado
+    # (arg_command) e qualquer opção adicional fornecida. Essa estrutura é útil
+    # para executar dinamicamente scripts baseados em configurações externas e
+    # é comumente usada para sistemas de plugins ou extensões.
+    # Exemplo de definição no arquivo config-local.ini:
+    # [extensions]
+    # maven-tomcat=docker-java-base-web-app/maven_project.sh
+
+    # Declara o array available_commands e popula com comandos da seção
+    # "extensions" no LOCAL_INIFILE_PATH
+    declare -a available_commands
+    list_keys_in_section "$LOCAL_INIFILE_PATH" "extensions" available_commands
+
+    echo "99
+    _service_name: ${_service_name}
+    ARG_COMMAND: $ARG_COMMAND
+    ARG_OPTIONS: $ARG_OPTIONS
+    "
+    local has_exec=false
+    # Executa o loop somente se available_commands contiver algum comando
+    if [ ${#available_commands[@]} -gt 0 ]; then
+      for command in "${available_commands[@]}"; do
+        if [ "$ARG_COMMAND" = "$command" ]; then
+          extension_exec_script "$LOCAL_INIFILE_PATH" \
+            "$_service_name" \
+            "$ARG_COMMAND" \
+            $ARG_OPTIONS
+          has_exec=true
+        fi
+      done
+    fi
+
+    # Caso o comando $ARG_COMMAND não possua função associada ou não tenha sido
+    # mapeado no $LOCAL_INIFILE_PATH, exuta executa service_exec com os
+    # parâmetros fornecidos
+    if [ "$has_exec" = false ]; then
+      service_exec "${_service_name}" "$ARG_COMMAND" "$ARG_OPTIONS"
+    fi
   fi
 }
 
@@ -1821,7 +1900,7 @@ function container_failed_to_initialize() {
           O erro que ocorreu indica que a porta $port já está em uso no sistema, e o Docker não conseguiu
           vincular outra instância do serviço a essa mesma porta.
           Para resolver o problema, existem algumas opções:
-          1. Definir uma nova porta para o serviço \"$_service_name\" no arquivo \".env\".
+          1. Definir uma nova porta para o serviço \"$_service_name\" no arquivo \"${DEFAULT_PROJECT_ENV}\".
           2. Verificar qual processo/serviço está utilizando a porta e parar o processo em execução.
           "
           if [ ! -z "$service" ]; then
@@ -1861,7 +1940,7 @@ function service_run() {
     echo ">>> $COMPOSE run --rm -w $WORK_DIR -u jailton $_service_name $_option"
     $COMPOSE run --rm -w $WORK_DIR -u $USER_NAME "$_service_name" $_option
   else
-    echo ">>> $COMPOSE run $_service_name $_option"
+    echo ">>> $COMPOSE run --rm $_service_name $_option"
     $COMPOSE run --rm "$_service_name" $_option
   fi
 }
@@ -2259,7 +2338,6 @@ function database_db_restore() {
       cat "$DIR_DUMP/restore.log"
     fi
   else
-    #$PROJECT_DEV_DIR/scripts/init_database.sh
     echo_error "Impossível restauarar o dump. Veja os erros acima."
   fi
   return $_falha
@@ -2720,7 +2798,6 @@ function main() {
 #  all_commands_local+=("${COMMANDS_COMUNS[@]}")
   local all_commands_local=("${COMMANDS_COMUNS[@]}")
 
-
   error_danger=""
   error_warning=""
 
@@ -2748,7 +2825,7 @@ if [ "$PROJECT_ROOT_DIR" != "$SCRIPT_DIR" ]; then
     exibir as mensagens informativas acima!"
   else
     echo_warning "VARIÁVEL \"LOGINFO=$LOGINFO\". Caso deseje exibir mensagens
-    informativas, defina a variável \"LOGINFO=true\" no arquivo .env"
+    informativas, defina a variável \"LOGINFO=true\" no arquivo ${DEFAULT_PROJECT_ENV}"
   fi
 
   # Chama a função principal

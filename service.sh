@@ -19,7 +19,6 @@ function check_and_load_scripts() {
     echo -e "$RED_COLOR DANG: Shell script $scriptsh não existe.\nEsse arquivo possui as funções utilitárias necessárias.\nImpossível continuar!$NO_COLOR"
     exit 1
   else
-    echo ">>> source $scriptsh"
     source "$scriptsh"
   fi
 }
@@ -1685,7 +1684,7 @@ function process_command() {
   elif [ "$ARG_COMMAND" = "git" ]; then
     command_git "${_service_name}" "$ARG_OPTIONS"
   else
-    echo_warning "Comando $ARG_COMMAND sem função associada"
+    echo_warning "Comando \"$ARG_COMMAND\" sem função associada."
 
     # Busca os scripts associados aos comandos disponíveis em uma seção
     # específica do arquivo de configuração LOCAL_INIFILE_PATH, normaliza os caminhos
@@ -1702,11 +1701,6 @@ function process_command() {
     declare -a available_commands
     list_keys_in_section "$LOCAL_INIFILE_PATH" "extensions" available_commands
 
-    echo "99
-    _service_name: ${_service_name}
-    ARG_COMMAND: $ARG_COMMAND
-    ARG_OPTIONS: $ARG_OPTIONS
-    "
     local has_exec=false
     # Executa o loop somente se available_commands contiver algum comando
     if [ ${#available_commands[@]} -gt 0 ]; then
@@ -1725,7 +1719,18 @@ function process_command() {
     # mapeado no $LOCAL_INIFILE_PATH, exuta executa service_exec com os
     # parâmetros fornecidos
     if [ "$has_exec" = false ]; then
-      service_exec "${_service_name}" "$ARG_COMMAND" "$ARG_OPTIONS"
+      if check_service_in_docker_compose "$PROJECT_DOCKERCOMPOSE" "$_service_name"; then
+        service_exec "${_service_name}" "$ARG_COMMAND" "$ARG_OPTIONS"
+      elif [ -z "$ARG_OPTIONS" ]; then
+        echo_warning "Argumento não informado para o comando \"$ARG_COMMAND\"."
+        echo_info "Executando comando $ARG_COMMAND com docker..."
+        echo ">>> docker $ARG_COMMAND --help"
+        docker "$ARG_COMMAND" --help
+      else
+        echo_info "Executando comando $ARG_COMMAND com docker..."
+        echo ">>> docker $ARG_COMMAND $ARG_OPTIONS"
+        docker "$ARG_COMMAND" $ARG_OPTIONS
+      fi
     fi
   fi
 }
@@ -1850,6 +1855,21 @@ function docker_build_all() {
 #  fi
 #}
 
+
+function check_service_in_docker_compose() {
+    local dockercompose_file=$1
+    local service=$2
+
+    if grep -q "service:" "$dockercompose_file"; then
+        # "O serviço '${service}' existe no docker-compose."
+        return 0
+    else
+        # "O serviço '${service}' NÃO existe no docker-compose."
+        return 1
+    fi
+    # Exemplo de uso:
+    # check_service_in_docker_compose "nome_do_servico"
+}
 function is_container_running() {
   local _service_name="$1"
 #  echo ">>> ${FUNCNAME[0]} $_service_name"

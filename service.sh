@@ -164,7 +164,7 @@ function verifica_e_configura_env() {
     # Definir variáveis de ambiente
     local default_requirements_file #SC2155
     project_root_dir="$(pwd -P)"
-    # TODO: $DEFAULT_BASE_DIR
+
     local default_base_dir="$project_root_dir/$project_name"
     local settings_local_file_sample="local_settings_sample.py"
 
@@ -419,8 +419,19 @@ if [ -f "$REQUIREMENTS_FILE" ]; then
             Exemplo: REQUIREMENTS_FILE=requiriments.txt
   "
 fi
+
 REQUIREMENTS_FILE="${REQUIREMENTS_FILE:-requirements.txt}"
-BASE_DIR=${BASE_DIR:-$DEFAULT_BASE_DIR}
+
+# Identifica se o caminho é relativo.
+# Se for, adiciona o caminho do projeto
+# Remove a primeira ocorrência de / no início da string.
+# Se o resultado for igual ao valor original, o caminho é relativo.
+if [ "${BASE_DIR#/}" = "$BASE_DIR" ]; then
+  dir_path=$(dirname $PROJECT_ROOT_DIR)
+  BASE_DIR=$(os_path_join "$dir_path" "$BASE_DIR")
+else
+  BASE_DIR=${BASE_DIR:-$DEFAULT_BASE_DIR}
+fi
 
 SETTINGS_LOCAL_FILE_SAMPLE="${SETTINGS_LOCAL_FILE_SAMPLE:-local_settings_sample.py}"
 # A estrutura ${VAR/old/new} substitui a primeira ocorrência de old na variável VAR por new
@@ -437,7 +448,17 @@ POSTGRES_PORT=${DATABASE_PORT:-$POSTGRES_PORT}
 POSTGRES_EXTERNAL_PORT=${POSTGRES_EXTERNAL_PORT:-$POSTGRES_PORT}
 #POSTGRESQL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/"
 
-DATABASE_DUMP_DIR="${DATABASE_DUMP_DIR:-$PROJECT_ROOT_DIR/dump}"
+# Identifica se o caminho é relativo.
+# Se for, adiciona o caminho do projeto
+# Remove a primeira ocorrência de / no início da string.
+# Se o resultado for igual ao valor original, o caminho é relativo.
+if [ "${DATABASE_DUMP_DIR#/}" = "$DATABASE_DUMP_DIR" ]; then
+  dir_path=$(dirname $PROJECT_ROOT_DIR)
+  DATABASE_DUMP_DIR=$(os_path_join "$dir_path" "$DATABASE_DUMP_DIR")
+else
+  DATABASE_DUMP_DIR="${DATABASE_DUMP_DIR:-$PROJECT_ROOT_DIR/dump}"
+fi
+
 POSTGRES_DUMP_DIR=${DATABASE_DUMP_DIR:-dump}
 DIR_DUMP=${POSTGRES_DUMP_DIR:-dump}
 
@@ -484,7 +505,7 @@ dockercompose=$(dict_get "all" "${DICT_COMPOSES_FILES[*]}")
 
 if [ ! -f "$dockercompose" ]; then
   dirpath="$(dirname $dockercompose)"
-  if [ "$dirpath" = "." ]; then
+  if [ -z "$dirpath" ] || [ "$dirpath" = "." ]; then
     dirpath="$(dirname $PROJECT_ENV_PATH_FILE)"
     dockercompose="${dirpath}/${dockercompose}"
   fi
@@ -1528,13 +1549,6 @@ function verify_arguments() {
           Comandos disponíveis:
               Comuns: ${all_commands_local[*]}
               Específicos: ${specific_commands_local[*]}"
-      if [ "$arg_service_name" = "web" ]; then
-        error_message_warning="${error_message_warning}
-              o comando \"up\" possui os argumentos \"--force-deploy-all\" e \"--force-deploy-dev\":
-              --force-deploy-all: força a construção (build) de todas os estágios de imagens.
-              --force-deploy-dev: força a construção (build) apenas do estágio da imagem dev, arquivo Dockerfile.
-              Exemplo de uso: sdocker web up --force-deploy-all"
-      fi
     fi
     return 1 # falha
   fi
@@ -1563,9 +1577,6 @@ function imprimir_orientacao_uso() {
 
     Comando comuns: Comandos comuns a todos os serciços, exceto **all**
       up                        Sobe o serviço [NOME_SERVICO] em **foreground**
-                                Este comando possui os argumentos force-deploy-all e force-deploy-dev:
-                                - force-deploy-all: força a construção (build) de todas os estágios de imagens.
-                                - force-deploy-dev: força a construção (build) apenas do estágio da imagem dev, arquivo Dockerfile.
       down                      Para o serviço [NOME_SERVICO]
       restart                   Para e reinicar o serviço [NOME_SERVICO] em **background**
       exec                      Executar um comando usando o serviço [NOME_SERVICO] já subido antes, caso não tenha um container em execução, o comando é executado em em um novo container
@@ -1832,13 +1843,8 @@ function build_python_nodejs_base() {
 }
 
 function docker_build_all() {
-  local option=$1
+  local force=$1
   echo ">>> ${FUNCNAME[0]} $option"
-
-  local force=false
-  if echo "$_option" | grep -q -- "--force"; then
-    force=true
-  fi
 
   build_python_base $force
   build_python_base_user $force
@@ -1903,8 +1909,49 @@ function container_failed_to_initialize() {
       $error_message"
 #      if echo "$error_message" | grep -iq "Address already in use"; then
 #      fi
+      if echo "$error_message" | grep -iq "invalid pool request"; then
+        echo solucao1=""
+        rede_conflitante=$(verificar_sobreposicao_subrede "$VPN_GATEWAY_FAIXA_IP")
+        local _return_func=$?
+        if [ $_return_func -eq 0 ]; then
+          # Procurar uma sub-rede na faixa 192.168.0.0/24, testando até 100 sub-redes
+          resultado=$(encontrar_subrede_disponivel "192.168.0.0" 24 100)
+          if [[ $? -eq 0 ]]; then
+              subrede=$(echo "$resultado" | awk '{print $1}')
+              ip_sugerido=$(echo "$resultado" | awk '{print $2}')
+              solucao1="Alterar o valor da variável \"VPN_GATEWAY_FAIXA_IP\" para a sub-rede
+              \"$subrede\" e \"VPN_GATEWAY\" para o IP \"$ip_sugerido\"."
+          else
+              solucao1="Alterar o valor da variável \"VPN_GATEWAY_FAIXA_IP\" para uma sub-rede
+              que não entre em conflito."
+          fi
 
-      if echo "$error_message" | grep -iq "port is already allocated"; then
+          echo_warning "A sub-rede '$VPN_GATEWAY_FAIXA_IP' definida na variável \"VPN_GATEWAY_FAIXA_IP\"
+          entra em conflito com a rede '$rede_conflitante'."
+          echo_info "Quando uma sub-rede entra em conflito com uma rede existente, o Docker
+          impede a criação de uma nova rede devido à sobreposição de endereços.
+          Para resolver o problema, segue as possíves soluções:
+          1. $solucao1
+          2. Remover ou Redefinir a Sub-rede de \"$rede_conflitante\"."
+
+          echo "Deseja remover a rede \"$rede_conflitante\"?"
+          read -r -p "Pressione 'S' para confirmar ou [ENTER] para ignorar: " resposta
+          resposta=$(echo "$resposta" | tr '[:lower:]' '[:upper:]')  # Converter para maiúsculas
+
+          if [ "$resposta" = "S" ]; then
+            echo ">>> docker network rm $rede_conflitante"
+            docker network rm "$rede_conflitante"
+            echo "-- Rede \"$rede_conflitante\" removida."
+          else
+            echo_error "A rede \"$rede_conflitante\" não foi removida."
+            echo_info "$solucao1"
+            exit 1
+          fi
+
+        else
+          echo "Nenhuma rede em conflito."
+        fi
+      elif echo "$error_message" | grep -iq "port is already allocated"; then
           # Verifica qual container está usando a porta 5432
           # docker inspect -f '{{.Name}} - {{.NetworkSettings.Ports}}' $(docker ps -q) | grep -q 5432
 
@@ -2143,7 +2190,8 @@ function service_db_wait() {
 
   # Loop until para continuar tentando até que _return_func seja igual a 1
   until [ $_return_func -eq 0 ]; do
-    echo_warning "Tentando conectar ao servidor de banco de dados, Aguarde!
+    echo_warning "Aguarde ...
+    Tentando conectar ao servidor de banco de dados,
     Caso deseje monitorar o log do servidor de banco de dados,
     abra um novo terminal e execute 'sdocker db logs'."
     psql_output=$(compose_service_db_get_host_port)
@@ -2158,18 +2206,6 @@ function service_db_wait() {
     sleep 2
   done
   echo_success "Servidor de banco de dados está aceitando conexões."
-
-#  psql_command="psql -v ON_ERROR_STOP=1 --host=$host --port=$port --username=$POSTGRES_USER --dbname=$POSTGRES_DB"
-#
-#  echo ">>> [LOOP] $COMPOSE exec -T $SERVICE_DB_NAME bash -c \"PGPASSWORD=******* $psql_command -tc 'SELECT 1;'\" 2>&1"
-#  until sql_output=$($COMPOSE exec -T "$SERVICE_DB_NAME" bash -c "PGPASSWORD=$POSTGRES_PASSWORD $psql_command -tc 'SELECT 1;'" 2>&1); do
-#    psql_output=$(echo "$psql_output" | xargs)  # remove espaços
-#    echo "ERROR: $psql_output"
-#    echo_warning "Banco de dados está não disponível - aguardando... "
-#    sleep 2
-#  done
-#
-#  echo_success "Banco de dados está pronto e aceitando conexões."
 }
 
 function database_wait() {
@@ -2235,7 +2271,8 @@ function database_wait() {
   psql_output=$(django_migrations_exists)
   _return_func=$?
   until [ $_return_func -eq 0 ]; do
-    echo_warning "O banco \"$POSTGRES_DB\" ainda não está pronto, Aguarde... "
+    echo_warning "Aguarde ...
+    O banco \"$POSTGRES_DB\" ainda não está pronto"
     psql_output=$(django_migrations_exists)
     _return_func=$?
     if [ $_return_func -eq 1 ]; then
@@ -2550,13 +2587,6 @@ function _service_web_up() {
   local _option="$*"
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
-  if [ "$_option" = "--force-deploy-all" ]; then
-    docker_build_all $_option
-    _option="--build"
-  elif [ "$_option" = "--force-deploy-dev" ]; then
-    _option="--build"
-  fi
-
   database_wait
 
   echo ">>> $COMPOSE up $_option $_service_name"
@@ -2568,7 +2598,6 @@ function _service_all_up() {
   local _option="${@:1}"
   echo ">>> ${FUNCNAME[0]} $_option"
 
-  # Chama a função e captura o array retornado
   service_names=($(get_service_names))
 
   # Itera sobre o array retornado pela função
@@ -2583,20 +2612,12 @@ function _service_up() {
   local _nservice
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
-  local arg_build=""
-  if echo "$_option" | grep -q -- "--force"; then
-    read _option arg_build <<< $_option
-  fi
-
   if [ "$_service_name" = "all" ]; then
     _service_all_up "$_option"
 #    $COMPOSE up $_option
   elif [ "$_service_name" = "$SERVICE_DB_NAME" ]; then
     _service_db_up "$_service_name" $_option
   elif [ "$_service_name" = "$SERVICE_WEB_NAME" ]; then
-    if [ -n "$arg_build" ]; then
-      _option=$arg_build
-    fi
     _service_web_up "$_service_name" $_option
   else
     _nservice=$(get_server_name ${_service_name})
@@ -2715,21 +2736,10 @@ function service_restart() {
 
 function service_build() {
   local _service_name=$1
-  local force=$2
   local _option="${@:2}"
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
 
-  # Verifica se $2 é --force e filtra
-  # o argumetno --force só é utilizado na função docker_build_all
-  if echo "$force" | grep -q -- "--force"; then
-      _option="${@:3}"  # Pega todos os argumentos a partir de $3, removendo $2
-  else
-      _option="${@:2}"  # Se $2 não for --force, pega todos os argumentos a partir de $2
-  fi
-
-  docker_build_all "$force"
-
-  echo ">>> $COMPOSE build --no-cache $SERVICE_WEB_NAME $_option"
+  echo ">>> $COMPOSE build --no-cache $_service_name $_option"
   error_message=$($COMPOSE build --no-cache "$_service_name" $_option 2>&1 | tee /dev/tty)
   container_failed_to_initialize "$error_message" "$_service_name" $_option
 }
@@ -2738,8 +2748,27 @@ function service_deploy() {
   local _option="${@:2}"
   local _service_name=$1
   echo ">>> ${FUNCNAME[0]} $_service_name $_option"
+
+  local force=false
+  if echo "$_option" | grep -q -- "--force"; then
+    read _option arg_build <<< $_option
+    force=true
+    if [ "$_option" = "--force" ]; then
+      _option=""
+    fi
+  fi
+
   service_down "$_service_name" -v $_option
-  service_build "$SERVICE_WEB_NAME" $_option
+  docker_build_all "$force"
+
+  service_names=($(get_service_names))
+
+  # Itera sobre o array retornado pela função
+  for _name_service in "${service_names[@]}"; do
+    service_build "$_name_service" $_option
+  done
+
+#  service_build "$SERVICE_WEB_NAME" $_option
 }
 
 function service_redeploy() {

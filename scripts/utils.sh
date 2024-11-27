@@ -472,7 +472,7 @@ function check_port() {
 # Função para verificar se um IP específico está em uso
 function verificar_gateway_em_uso() {
     local gateway_ip="$1"
-    docker network inspect --format '{{json .IPAM.Config}}' $(docker network ls -q) | grep -q "\"Gateway\":\"$gateway_ip\"" && return 0
+    docker network inspect --format '{{json .IPAM.Config .Labels.}}' $(docker network ls -q) | grep -q "\"Gateway\":\"$gateway_ip\"" && return 0
     return 1  # Retorna 1 se o IP do gateway não estiver em uso
 }
 
@@ -549,6 +549,130 @@ function determinar_gateway_vpn() {
   #echo "VPN Gateway IP: $vpn_gateway_ip"
 }
 
+function verificar_subrede_na_faixa() {
+    local subrede="$1" # Sub-rede que queremos verificar, ex: 192.168.1.0/24
+    local faixa="$2"   # Faixa a ser comparada, ex: 192.168.0.0/16
+
+    # Verifica se a sub-rede está dentro da faixa maior usando ipcalc
+    ipcalc -n "$subrede" "$faixa" 2>/dev/null | grep -q "overlap" && {
+        echo "A sub-rede $subrede está dentro da faixa $faixa."
+        return 0
+    }
+    echo "A sub-rede $subrede NÃO está dentro da faixa $faixa."
+    return 1
+}
+
+function verificar_sobreposicao_subrede() {
+    local subnet="$1" # Sub-rede que queremos verificar, ex: 172.19.0.0/16
+    local rede_encontrada=""
+    local conflito=1 # Inicializa como sem conflito
+
+#    echo "Verificando sobreposição para a sub-rede: $subnet"
+    # Itera sobre todas as redes Docker
+    while read -r network_id; do
+        # Obtém o nome e a sub-rede da rede atual, se disponíveis
+        local nome_rede
+        local rede_subnet
+
+        nome_rede=$(docker network inspect --format '{{.Name}}' "$network_id")
+        rede_subnet=$(docker network inspect --format '{{if (index .IPAM.Config 0)}}{{(index .IPAM.Config 0).Subnet}}{{end}}' "$network_id")
+
+        # Ignora redes sem sub-rede definida
+        if [ -z "$rede_subnet" ]; then
+            continue
+        fi
+
+#        echo "Verificando rede: $nome_rede (sub-rede: $rede_subnet)"
+
+        # Verifica sobreposição de sub-redes (usar lógica ou ferramentas como ipcalc/sipcalc)
+        # TODO: Ideal usar verificar_subrede_na_faixa, porém como depende do
+        #  pacote ipcalc, preferimos não usar para não ter que instalar
+        #  pacotes adicionais
+        if [ "$subnet" = "$rede_subnet" ]; then
+            rede_encontrada="$nome_rede"
+            conflito=0
+            break
+        fi
+    done < <(docker network ls -q) # Redireciona a saída diretamente ao `while`
+
+    # Retorna o nome da rede encontrada, se houver
+    if [ $conflito -eq 0 ]; then
+        echo "$rede_encontrada"
+    fi
+
+    return $conflito
+
+    # Exemplo de uso:
+    # rede_conflitante=$(verificar_sobreposicao_subrede "172.19.0.0/16")
+    # if [[ $? -eq 0 ]]; then
+    #    echo "Rede em conflito: $rede_conflitante"
+    # else
+    #    echo "Nenhuma rede em conflito."
+    # fi
+}
+
+function encontrar_subrede_disponivel() {
+    local cidr_base="$1"    # Base da sub-rede, ex: "192.168.0.0"
+    local cidr_range="$2"   # Tamanho do CIDR, ex: 24
+    local max_subnets="$3"  # Número máximo de sub-redes para testar, ex: 100
+    local subnet_disponivel=""
+    local ip_sugerido=""
+
+#    echo "Buscando sub-rede disponível na faixa $cidr_base/$cidr_range..."
+
+    # Obter todas as sub-redes ocupadas atualmente no Docker
+    local subredes_ocupadas=($(docker network ls -q | xargs docker network inspect --format '{{if (index .IPAM.Config 0)}}{{(index .IPAM.Config 0).Subnet}}{{end}}' 2>/dev/null | grep -v '^$'))
+
+    # Itera gerando sub-redes a partir da base e verificando disponibilidade
+    for i in $(seq 0 $((max_subnets - 1))); do
+        # Calcula a próxima sub-rede adicionando `i` ao terceiro octeto
+        local subnet=$(echo "$cidr_base" | awk -v inc="$i" -F '.' '{printf "%d.%d.%d.%d/%s", $1, $2, ($3 + inc), 0, "'"$cidr_range"'"}')
+
+        # Verifica se a sub-rede está ocupada
+        local conflito=0
+        for rede in "${subredes_ocupadas[@]}"; do
+            if [[ "$rede" == "$subnet" ]]; then
+                conflito=1
+                break
+            fi
+        done
+
+        # Se não houver conflito, a sub-rede está disponível
+        if [[ $conflito -eq 0 ]]; then
+            subnet_disponivel="$subnet"
+            # Calcula o IP sugerido: primeiro endereço disponível na sub-rede (ex.: 192.168.1.1 para 192.168.1.0/24)
+            ip_sugerido=$(echo "$subnet" | awk -F '/' '{split($1, octets, "."); printf "%d.%d.%d.%d", octets[1], octets[2], octets[3], octets[4] + 1}')
+#            echo "Sub-rede disponível: $subnet_disponivel"
+#            echo "IP sugerido para uso: $ip_sugerido"
+            break
+        fi
+    done
+
+    # Retornar a sub-rede e o IP sugerido
+    if [[ -z "$subnet_disponivel" ]]; then
+#        echo "Nenhuma sub-rede disponível encontrada na faixa fornecida."
+        return 1
+    else
+        echo "$subnet_disponivel $ip_sugerido"
+        return 0
+    fi
+
+   # Exemplo de uso:
+   # Procurar uma sub-rede na faixa 192.168.0.0/24, testando até 100 sub-redes
+   #resultado=$(encontrar_subrede_disponivel "192.168.0.0" 24 100)
+   #
+   #if [[ $? -eq 0 ]]; then
+   #    # Extrair sub-rede e IP sugerido da saída
+   #    subrede=$(echo "$resultado" | awk '{print $1}')
+   #    ip_sugerido=$(echo "$resultado" | awk '{print $2}')
+   #    echo "Sub-rede encontrada: $subrede"
+   #    echo "IP sugerido para uso: $ip_sugerido"
+   #else
+   #    echo "Nenhuma sub-rede disponível encontrada."
+   #fi
+}
+
+
 ##############################################################################
 ### FUNÇÕES PARA TRATAR TRATAMENTO DE IMAGENS DOCKER, DOCKERFILE E DOCKER-COMPOSE
 ##############################################################################
@@ -614,6 +738,36 @@ function escolher_imagem_base() {
 #
 #echo "Imagem selecionada: $imagem_base"
 #echo "Nome base: $nome_base"
+}
+
+#!/bin/bash
+
+# Função para verificar se o serviço usa Dockerfile
+function verificar_servico_usa_dockerfile() {
+    local arquivo_compose="$1" # Caminho para o arquivo docker-compose.yaml
+    local servico="$2"  # Nome do serviço a verificar
+    set -x
+    # Verifica se o arquivo docker-compose.yaml existe
+    if [ ! -f "$arquivo_compose" ]; then
+        echo "Erro: Arquivo $arquivo_compose não encontrado."
+        return 1
+    fi
+
+    # Verifica se o serviço usa 'build'
+    if grep -A 10 "services:" "$arquivo_compose" | grep -A 10 "$servico:" | grep -q "build:"; then
+        return 0  # Serviço usa Dockerfile
+    else
+        return 1  # Serviço não usa Dockerfile
+    fi
+    # Exemplo de uso
+    #servico="django"
+    #verificar_servico_usa_dockerfile "$servico"
+    #
+    #if [[ $? -eq 0 ]]; then
+    #    echo "O serviço '$servico' usa um Dockerfile."
+    #else
+    #    echo "O serviço '$servico' não usa um Dockerfile."
+    #fi
 }
 
 ##############################################################################
@@ -800,14 +954,19 @@ function check_file_existence() {
   #fi
 }
 
-os_path_join() {
+function os_path_join() {
     local path=""
     local first_arg=true
 
     for segment in "$@"; do
-        # Remove barras extras no início ou no final de cada segmento, exceto o primeiro
+        # Remove barras extras no início ou no final de cada segmento
         segment="${segment#/}"
         segment="${segment%/}"
+
+        # Lida com caminhos relativos contendo "./"
+        if [[ "$segment" == "./"* ]]; then
+            segment="${segment#./}"
+        fi
 
         # Concatena o caminho com "/"
         if [[ "$first_arg" == true ]]; then
@@ -821,12 +980,13 @@ os_path_join() {
     # Garante que mantenha a barra inicial se o primeiro segmento for absoluto
     [[ "${1:0:1}" == "/" ]] && path="/${path}"
 
-    echo "$path"
+    # Remove redundâncias como "/./" e ajusta o resultado
+    echo "$(realpath -m "$path")"
 
-  # Exemplo de chamada
-  #final_path=$(os_path_join "/home" "/jailton/" "workstation//" "project//file.txt")
-  #echo "$final_path"
-  ## Saída: /home/jailton/workstation/project/file.txt
+    # Exemplo de chamada:
+    # final_path=$(os_path_join "/home" "/jailton/" "workstation//" "./djud/djud")
+    # echo "$final_path"
+    ## Saída: /home/jailton/workstation/djud/djud
 }
 
 ##############################################################################

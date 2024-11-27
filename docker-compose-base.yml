@@ -156,6 +156,7 @@ networks:
 
 volumes:
   db_data:
+    external: true
 
 configs:
   pgpass:
